@@ -48,12 +48,13 @@ export function createBaby(world) {
     return world.createBody({ type: 'dynamic', position: new pl.Vec2(x, y), linearDamping: 0.05, angularDamping: 0.1, userData: { part } });
   }
 
-  // Torso and head. The rounded back bulge is load-bearing for gameplay: a flat box
-  // torso is too statically stable to ever tip prone (verified by evolutionary search,
-  // which plateaued at 0.6 rad). Babies roll by rocking on a round back; so does ours.
+  // Torso and head. The gentle back bulge exists so the baby can ROCK (the skill that
+  // earns a roll-over); it is deliberately small because a big rocker kills scooting
+  // grip. Rolling itself is scripted via sim.js rock-to-roll: an in-plane 180 flip is
+  // a somersault no baby can do, so physics only has to produce the rocking.
   const torso = limbBody(sx, sy, 'torso');
   torso.createFixture(bodyFixtureDef(new pl.Box(0.105, 0.05), COLLISION.BODY, COLLISION.WORLD, 'torso'));
-  torso.createFixture(bodyFixtureDef(new pl.Circle(new pl.Vec2(0, -0.02), 0.085), COLLISION.BODY, COLLISION.WORLD, 'torso'));
+  torso.createFixture(bodyFixtureDef(new pl.Circle(new pl.Vec2(0, -0.005), 0.065), COLLISION.BODY, COLLISION.WORLD, 'torso'));
 
   const head = limbBody(sx + 0.19, sy, 'head');
   head.createFixture(bodyFixtureDef(new pl.Circle(0.078), COLLISION.HEAD, COLLISION.WORLD | COLLISION.HAND, 'head'));

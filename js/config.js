@@ -81,6 +81,15 @@ export const PAIN = {
   SCRAMBLE_SEC: 0.8,          // pain briefly scrambles motor control
 };
 
+// Rock-to-roll: rolling over is triggered by building a rocking oscillation, not by
+// physically somersaulting (impossible in a sagittal view, for us and for babies).
+// AMPLITUDE_TO_ROLL is calibrated to ~2/3 of what evolutionary search can reach.
+export const ROCK = {
+  AMPLITUDE_TO_ROLL: 0.65,
+  PEAK_DECAY: 0.995,        // per-step decay of tracked rocking peaks (~1.2 s memory)
+  ROLL_ANIM_SEC: 0.7,
+};
+
 // Vision develops from newborn blur (~20/400) toward clear as milestones land.
 export const VISION = { MAX_BLUR_PX: 7 };
 

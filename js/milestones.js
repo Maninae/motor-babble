@@ -3,9 +3,7 @@
 
 import { MILESTONE_DEFS, ROOM } from './config.js';
 
-const PRONE_ANGLE_TOLERANCE = 0.7;   // radians from face-down counts as prone
 const HAND_TO_FACE_HOLD_SEC = 0.4;
-const ROLL_HOLD_SEC = 0.5;
 const TUMMY_HEAD_LIFT = 0.10;        // head center this far above torso center while prone
 const TUMMY_HOLD_SEC = 1.5;
 const SCOOT_DISTANCE = 0.55;
@@ -18,29 +16,22 @@ export function wrapAngle(angle) {
   return a;
 }
 
-export function isProne(torsoAngle) {
-  /** Face-down = torso rotated within tolerance of +/- pi from supine spawn. */
-  return Math.abs(wrapAngle(torsoAngle)) > Math.PI - PRONE_ANGLE_TOLERANCE;
-}
-
 export function createMilestoneTracker() {
   /** update(dt, snapshot) -> array of newly achieved milestone ids (usually empty).
    *
-   * snapshot: { torsoAngle, torsoX, torsoY, headY, handOnFace }
+   * snapshot: { prone, justRolled, torsoX, torsoY, headY, handOnFace }
+   * prone/justRolled come from the sim's rock-to-roll facing state.
    * Milestones can land in any order except tummy-time (needs roll-over first).
    */
   const achieved = new Set();
   let handTimer = 0;
-  let proneTimer = 0;
   let tummyTimer = 0;
 
   function update(dt, s) {
     const fresh = [];
-    const prone = isProne(s.torsoAngle);
 
     handTimer = s.handOnFace ? handTimer + dt : 0;
-    proneTimer = prone ? proneTimer + dt : 0;
-    tummyTimer = (prone && s.headY > s.torsoY + TUMMY_HEAD_LIFT) ? tummyTimer + dt : 0;
+    tummyTimer = (s.prone && s.headY > s.torsoY + TUMMY_HEAD_LIFT) ? tummyTimer + dt : 0;
 
     function landIf(condition, id) {
       if (condition && !achieved.has(id)) {
@@ -50,7 +41,7 @@ export function createMilestoneTracker() {
     }
 
     landIf(handTimer >= HAND_TO_FACE_HOLD_SEC, 'hand-to-face');
-    landIf(proneTimer >= ROLL_HOLD_SEC, 'roll-over');
+    landIf(s.justRolled, 'roll-over');
     landIf(achieved.has('roll-over') && tummyTimer >= TUMMY_HOLD_SEC, 'tummy-time');
     landIf(Math.abs(s.torsoX - ROOM.SPAWN_X) >= SCOOT_DISTANCE, 'scoot');
     landIf(s.torsoX >= ROOM.PARENT_ZONE_X, 'reach-parent');

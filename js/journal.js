@@ -53,6 +53,12 @@ const MILESTONE_LINES = {
   'reach-parent': 'the big warm face!!! i traveled the whole world to you.',
 };
 
+const REPEAT_ROLL_LINES = [
+  'the world spun again. i am a tumbleweed now.',
+  'flip! ceiling, floor, ceiling. i contain multitudes.',
+  'rolled again. the ground and i are taking turns.',
+];
+
 const INSTINCT_LINES = [
   'something ancient in me knows how to wiggle. i will let it drive.',
   'generations of babies whisper: kick like this.',
@@ -76,6 +82,7 @@ export function createJournal(seedString) {
         return pick(PAIN_LINES);
       }
       case 'soothe': return pick(SOOTHE_LINES);
+      case 'roll': return pick(REPEAT_ROLL_LINES);
       case 'meltdown': return pick(MELTDOWN_LINES);
       case 'milestone': return MILESTONE_LINES[event.id] || 'i did a thing. a big thing.';
       case 'instinct': return pick(INSTINCT_LINES);

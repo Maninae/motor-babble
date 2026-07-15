@@ -3,10 +3,10 @@
 // interface: step(activations, dt) -> events. Determinism note: given the same seed and
 // the same activation sequence, runs replay exactly (Box2D is deterministic per build).
 
-import { CALM, MILESTONE_DEFS, MOTOR, MUSCLE_COUNT, NOISE, PAIN, PHYSICS, ROOM, VISION } from './config.js';
+import { CALM, MILESTONE_DEFS, MOTOR, MUSCLE_COUNT, NOISE, PAIN, PHYSICS, ROCK, ROOM, VISION } from './config.js';
 import { createBaby } from './baby.js';
 import { createNursery } from './nursery.js';
-import { createMilestoneTracker } from './milestones.js';
+import { createMilestoneTracker, wrapAngle } from './milestones.js';
 import { createRng } from './rng.js';
 
 const pl = globalThis.planck;
@@ -29,6 +29,11 @@ export function createSimulation(seedString) {
     handOnFace: false,
     wasSoothing: false,
     won: false,
+    // Rock-to-roll: which way the belly faces ('up' = supine), plus rocking peak trackers.
+    facing: 'up',
+    rollAnimTimer: 0,
+    rockPeakPos: 0,
+    rockPeakNeg: 0,
   };
 
   // --- Contact bookkeeping -------------------------------------------------
@@ -153,10 +158,30 @@ export function createSimulation(seedString) {
     if (state.handOnFace && !state.wasSoothing && state.calm < 90) events.push({ type: 'soothe' });
     state.wasSoothing = state.handOnFace;
 
-    // Milestones
+    // Rock-to-roll: build a rocking oscillation to earn a (scripted) roll. Physically
+    // flipping 180 in this view would be a somersault, so the skill we demand is the
+    // rocking itself; the flip is cinematic and the facing state does the bookkeeping.
     const torso = baby.parts.torso;
+    const wrapped = wrapAngle(torso.getAngle());
+    state.rollAnimTimer = Math.max(0, state.rollAnimTimer - dt);
+    state.rockPeakPos = Math.max(state.rockPeakPos * ROCK.PEAK_DECAY, wrapped);
+    state.rockPeakNeg = Math.min(state.rockPeakNeg * ROCK.PEAK_DECAY, wrapped);
+    const rockAmplitude = state.rockPeakPos - state.rockPeakNeg;
+    let justRolled = false;
+    if (rockAmplitude >= ROCK.AMPLITUDE_TO_ROLL && state.rollAnimTimer <= 0 && state.meltdownTimer <= 0) {
+      state.facing = state.facing === 'up' ? 'down' : 'up';
+      state.rollAnimTimer = ROCK.ROLL_ANIM_SEC;
+      state.rockPeakPos = 0;
+      state.rockPeakNeg = 0;
+      justRolled = true;
+      events.push({ type: 'roll', facing: state.facing });
+    }
+    const prone = state.facing === 'down' && Math.abs(wrapped) < 0.8;
+
+    // Milestones
     const fresh = milestones.update(dt, {
-      torsoAngle: torso.getAngle(),
+      prone,
+      justRolled,
       torsoX: torso.getPosition().x,
       torsoY: torso.getPosition().y,
       headY: baby.parts.head.getPosition().y,
@@ -185,6 +210,9 @@ export function createSimulation(seedString) {
       blurPx: blurPx(),
       torsoX: torsoPos.x,
       distanceToParent: Math.max(0, ROOM.PARENT_ZONE_X - torsoPos.x),
+      facing: state.facing,
+      rollAnim: state.rollAnimTimer > 0 ? state.rollAnimTimer / ROCK.ROLL_ANIM_SEC : 0,
+      rockCharge: Math.min(1, (state.rockPeakPos - state.rockPeakNeg) / ROCK.AMPLITUDE_TO_ROLL),
     };
   }
 

@@ -43,7 +43,8 @@ export function createMilestoneTracker() {
     landIf(handTimer >= HAND_TO_FACE_HOLD_SEC, 'hand-to-face');
     landIf(s.justRolled, 'roll-over');
     landIf(achieved.has('roll-over') && tummyTimer >= TUMMY_HOLD_SEC, 'tummy-time');
-    landIf(Math.abs(s.torsoX - ROOM.SPAWN_X) >= SCOOT_DISTANCE, 'scoot');
+    // Forward only: drifting backward into the crib is not a scoot, it is a mistake.
+    landIf(s.torsoX - ROOM.SPAWN_X >= SCOOT_DISTANCE, 'scoot');
     landIf(s.torsoX >= ROOM.PARENT_ZONE_X, 'reach-parent');
 
     return fresh;

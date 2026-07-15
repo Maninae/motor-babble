@@ -115,7 +115,8 @@ class MilestoneTracker:
             MilestoneId.ROLL_OVER in self.achieved and self.tummy_hold_seconds >= MILESTONE_HOLD_TUMMY_SEC,
             MilestoneId.TUMMY_TIME,
         )
-        land(abs(snapshot.torso_x - SPAWN_X) >= MILESTONE_SCOOT_DISTANCE, MilestoneId.SCOOT)
+        # Forward only (parity with js/milestones.js): backward drift is not a scoot.
+        land(snapshot.torso_x - SPAWN_X >= MILESTONE_SCOOT_DISTANCE, MilestoneId.SCOOT)
         land(snapshot.torso_x >= PARENT_ZONE_X, MilestoneId.REACH_PARENT)
 
         return newly_landed

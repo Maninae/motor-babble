@@ -203,6 +203,10 @@ export function createHud(root) {
     while (journalEl.children.length > MAX_JOURNAL) journalEl.removeChild(journalEl.lastChild);
   }
 
+  function clearJournal() {
+    journalEl.replaceChildren();
+  }
+
   function update(sim, wiring, extras) {
     /** Called every frame from main. sim: simulation object; wiring: wiring for reveals. */
     const snap = sim.getSnapshot();
@@ -374,6 +378,7 @@ export function createHud(root) {
     setSeed,
     setPressed,
     pushJournalLine,
+    clearJournal,
     update,
     setEvolutionStatus,
     bindButton,

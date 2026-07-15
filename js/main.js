@@ -23,6 +23,8 @@ let stoppedAt = 0;
 let lastKeyPressedLetter = null;  // for the superstition threading
 let lastRollJournalAt = -Infinity; // throttle repeat roll lines
 const ROLL_JOURNAL_COOLDOWN = 5;   // seconds
+let lastJournalAt = 0;             // sim-time of the last journal line, for idle musings
+const IDLE_MUSING_SEC = 30;        // silence longer than this earns a ceiling observation
 
 const canvas = app.getCanvas();
 
@@ -39,6 +41,12 @@ function writeSeedToUrl(seed) {
   history.replaceState({}, '', url);
 }
 
+function postJournal(line) {
+  if (!line) return;
+  app.pushJournalLine(line);
+  lastJournalAt = sim ? sim.state.time : 0;
+}
+
 function newRun(seed) {
   if (evolution) evolution.dispose();   // abort the old body's in-flight search + listeners
   currentSeed = seed;
@@ -46,6 +54,8 @@ function newRun(seed) {
   sim = createSimulation(seed);
   wiring = createWiring(seed);
   journal = createJournal(seed);
+  app.clearJournal();                   // a new baby starts a new diary
+  lastJournalAt = 0;
   evolution = createEvolution(seed, createSimulation);
   evolution.onChange((status) => {
     app.setEvolutionStatus(status);
@@ -57,8 +67,7 @@ function newRun(seed) {
   timerStopped = false;
   stoppedAt = 0;
   lastKeyPressedLetter = null;
-  const opening = journal.lineFor({ type: 'opening' });
-  if (opening) app.pushJournalLine(opening);
+  postJournal(journal.lineFor({ type: 'opening' }));
   if (!renderer) renderer = createRenderer(canvas);
   renderer.resize();
 }
@@ -82,8 +91,7 @@ function onKeyDown(e) {
   app.setPressed(k, true);
   if (!firstKeyPressed) {
     firstKeyPressed = true;
-    const line = journal.lineFor({ type: 'first-key' });
-    if (line) app.pushJournalLine(line);
+    postJournal(journal.lineFor({ type: 'first-key' }));
   }
   lastKeyPressedLetter = k;
 }
@@ -113,15 +121,14 @@ app.bindButton('#mb-same-body', () => {
 });
 app.bindButton('#mb-grow-instinct', () => {
   if (!evolution) return;
-  evolution.run(5).catch((e) => console.error('evolution failed:', e));
+  // 12 generations gives the sparkline a real learning curve instead of a step;
+  // re-clicking keeps growing from the current population.
+  evolution.run(12).catch((e) => console.error('evolution failed:', e));
 });
 app.bindButton('#mb-drive', () => {
   if (!evolution || evolution.status().best == null) return;
   const nowDriving = evolution.toggleDrive(sim, sim.state.time);
-  if (nowDriving) {
-    const line = journal.lineFor({ type: 'instinct' });
-    if (line) app.pushJournalLine(line);
-  }
+  if (nowDriving) postJournal(journal.lineFor({ type: 'instinct' }));
 });
 
 // Dismiss intro on click as well
@@ -169,11 +176,12 @@ function frame(now) {
         else lastRollJournalAt = sim.state.time;
       }
 
-      if (!suppressLine) {
-        const line = journal.lineFor(ev);
-        if (line) app.pushJournalLine(line);
-      }
+      if (!suppressLine) postJournal(journal.lineFor(ev));
       renderer.noteEvent(ev);
+    }
+    // Long silences get an idle musing: the baby narrates the ceiling.
+    if (bornYet && !sim.state.won && sim.state.time - lastJournalAt > IDLE_MUSING_SEC) {
+      postJournal(journal.lineFor({ type: 'idle-musing' }));
     }
     // On win, freeze the timer but keep the physics stepping so confetti animates.
     if (sim.state.won && !timerStopped) {

@@ -51,13 +51,19 @@ export const MOTOR = {
   TONE_TORQUE: 0.18,          // resting joint friction when no muscle fires
   NECK_TORQUE_BASE: 0.25,     // head control: grows with development
   NECK_TORQUE_PER_LEVEL: 0.45,
-  STRENGTH_BASE: 0.8,         // myelination: muscles strengthen with development
-  STRENGTH_PER_LEVEL: 0.06,
+  // Myelination is the win gate: at dev 0 the best gait crawls ~6 mm/s (a newborn
+  // cannot cross a room, correctly), at dev 3 it jumps to ~80 mm/s. Milestones are
+  // how you earn the muscles that make the parent reachable.
+  STRENGTH_BASE: 0.8,
+  STRENGTH_PER_LEVEL: 0.12,
 };
 
 // Motor noise: young nervous system = every command comes out smeared. Anneals with milestones.
+// Tuned via the headless gait lab (scratchpad experiment, 2-key square-wave gaits):
+// BASE 0.5 drowned rhythmic input (best human-plausible gait 3.7 mm/s, room
+// uncrossable); 0.3 keeps newborn comedy while letting rhythm accumulate force.
 export const NOISE = {
-  BASE: 0.5,
+  BASE: 0.3,
   SMEAR_SCALE: 0.6,           // fraction of the noise level mixed into active commands
   TWITCH_CHANCE: 0.012,       // spontaneous random twitches per joint per step, scaled by noise
   TWITCH_FLOOR: 0.3,          // twitches never fully vanish, even fully developed

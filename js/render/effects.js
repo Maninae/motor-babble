@@ -36,7 +36,7 @@ export function createEffectsState() {
     confetti: [],           // array of { x, y, vx, vy, color, life, size, spin, angle }
     winConfettiSpawn: 0,
     flompShake: 0,          // seconds remaining of "flomp" screen shake after a roll
-    flompFloorPuff: null,   // { t } — small dust puff from a roll's floor impact
+    flompFloorPuff: null,   // { t } small dust puff from a roll's floor impact
   };
 }
 

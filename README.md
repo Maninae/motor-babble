@@ -4,6 +4,8 @@
 
 A physics game about the hardest reinforcement learning problem anyone ever solves: being a baby. Every letter on your keyboard fires a muscle in a floppy physics newborn, the wiring is hidden, and it gets re-scrambled every run. Figure out your own body by mashing keys, roll over, survive tummy time, and crawl across the nursery to your parent.
 
+![A physics baby flails on a nursery rug while its parent waits with open arms](docs/hero.png)
+
 The game is honest about where the comedy comes from: real newborns actually do this. They punch themselves in the face and blame the world. They kick the crib bar and file the pain under "unexplained cruelty." Their motor commands come out smeared with noise, their vision is a 20/400 blur, and every milestone (hand found, roll conquered, first scoot) is the reward signal that slowly turns flailing into intent.
 
 ## Play

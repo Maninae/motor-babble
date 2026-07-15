@@ -46,7 +46,7 @@ export function createBabyArt({ viewport, worldToScreen, ambient, effects, reduc
    *  (for milestoneJoyT). No mutable state lives in this module. */
 
   function drawContactShadow(g, sim) {
-    /** Soft ellipse under the baby's torso — the crisp contact cue that
+    /** Soft ellipse under the baby's torso: the crisp contact cue that
      *  replaced the old scene-wide floor band. */
     const { pxPerM } = viewport;
     const torsoPos = sim.baby.parts.torso.getPosition();

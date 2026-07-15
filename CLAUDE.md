@@ -22,7 +22,7 @@ A physics game (browser, zero build step) plus a Python RL sandbox, both simulat
 | `js/nursery.js` | Static geometry: floor, walls, crib bar. Every fixture carries `userData.part` for contact classification. |
 | `js/milestones.js` | Milestone state machine over sim snapshots. Pure, no physics. |
 | `js/sim.js` | The headless coordinator: world stepping, contact events, calm/pain/meltdown, development scaling. NO DOM ACCESS, ever. |
-| `js/render.js` | Canvas art layer. Reads sim snapshots, draws nursery + baby + effects. |
+| `js/render/` | Canvas art layer: `index.js` (coordinator), `background.js` (static scene + per-bucket blur cache), `baby_art.js`, `parent_art.js`, `effects.js`, `helpers.js`. |
 | `js/hud.js` | DOM sidebar: journal feed, milestones, calm, key strip, buttons. |
 | `js/evolution.js` | In-browser evolutionary policy search (CPG genomes) on fresh headless sims. |
 | `js/main.js` | Boot, input, fixed-timestep loop, wiring it all together. |

@@ -58,7 +58,9 @@ export const MOTOR = {
 // Motor noise: young nervous system = every command comes out smeared. Anneals with milestones.
 export const NOISE = {
   BASE: 0.5,
+  SMEAR_SCALE: 0.6,           // fraction of the noise level mixed into active commands
   TWITCH_CHANCE: 0.012,       // spontaneous random twitches per joint per step, scaled by noise
+  TWITCH_FLOOR: 0.3,          // twitches never fully vanish, even fully developed
   TWITCH_SPEED: 6,
 };
 
@@ -78,7 +80,9 @@ export const PAIN = {
   FLOOR_HEAD_IMPULSE: 1.6,    // face-planting the floor
   SELF_BONK_IMPULSE: 0.35,    // own hand to own face (not pain, just betrayal)
   COOLDOWN_SEC: 1.5,
+  BONK_COOLDOWN_SEC: 0.45,    // a bouncy hand-face impact is one bonk, not five
   SCRAMBLE_SEC: 0.8,          // pain briefly scrambles motor control
+  SPAWN_GRACE_SEC: 1.0,       // the spawn drop is not the world's fault
 };
 
 // Rock-to-roll: rolling over is triggered by building a rocking oscillation, not by

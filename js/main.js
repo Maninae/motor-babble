@@ -23,7 +23,6 @@ let stoppedAt = 0;
 let lastKeyPressedLetter = null;  // for the superstition threading
 let lastRollJournalAt = -Infinity; // throttle repeat roll lines
 const ROLL_JOURNAL_COOLDOWN = 5;   // seconds
-let firstRollLandedAt = null;      // gate: skip repeat line if the milestone line just fired
 
 const canvas = app.getCanvas();
 
@@ -41,6 +40,7 @@ function writeSeedToUrl(seed) {
 }
 
 function newRun(seed) {
+  if (evolution) evolution.dispose();   // abort the old body's in-flight search + listeners
   currentSeed = seed;
   writeSeedToUrl(seed);
   sim = createSimulation(seed);
@@ -67,6 +67,9 @@ function isLetter(k) { return /^[a-z]$/.test(k); }
 
 function onKeyDown(e) {
   if (e.repeat) return;
+  // Modifier combos (Cmd+R, Ctrl+F, ...) are browser business, not muscles; and macOS
+  // swallows the matching keyup while Cmd is held, which would leave the letter stuck on.
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
   const target = e.target;
   if (target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
   if (!bornYet) {
@@ -152,7 +155,6 @@ function frame(now) {
     // First pass: detect if a milestone roll-over event happened this tick, so we can
     // suppress the throttled repeat-roll line (the milestone line already covers it).
     const milestoneRollHere = events.some((e) => e.type === 'milestone' && e.id === 'roll-over');
-    if (milestoneRollHere) firstRollLandedAt = sim.state.time;
 
     for (const ev of events) {
       // Thread the last pressed key into pain events for the superstition line.

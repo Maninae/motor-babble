@@ -138,12 +138,14 @@ export function createHud(root) {
   if (isTouchOnly) touchWarning.hidden = false;
 
   // ---- milestone pips ----------------------------------------------------
+  const pipElements = new Map();   // milestone id -> element, so update() never queries
   for (const def of MILESTONE_DEFS) {
     const pip = document.createElement('div');
     pip.className = 'milestone-pip';
     pip.dataset.id = def.id;
     pip.innerHTML = `<div class="pip-emoji">${def.emoji}</div><div class="pip-title">${def.title.toLowerCase()}</div>`;
     milestonesEl.appendChild(pip);
+    pipElements.set(def.id, pip);
   }
 
   // ---- key strip (staggered QWERTY) ------------------------------------
@@ -164,8 +166,10 @@ export function createHud(root) {
   });
 
   const fitnessHistory = [];
-  const journalEntries = [];   // { text, t }
   const MAX_JOURNAL = 8;
+
+  // Last-written HUD values: update() runs every frame, the DOM only changes on deltas.
+  const lastHud = { timerText: '', distPct: -1, level: -1, calm: -1, meltdown: null, low: null };
 
   // ---- Public API --------------------------------------------------------
 
@@ -190,17 +194,13 @@ export function createHud(root) {
   }
 
   function pushJournalLine(text) {
+    /** Append-only: only the fresh entry gets a DOM node (and its fade-in animation);
+     *  existing entries stay put instead of re-animating on every push. */
     if (!text) return;
-    const entry = { text, at: performance.now() };
-    journalEntries.unshift(entry);
-    while (journalEntries.length > MAX_JOURNAL) journalEntries.pop();
-    renderJournal();
-  }
-
-  function renderJournal() {
-    journalEl.innerHTML = journalEntries
-      .map((e) => `<li>${escapeHtml(e.text)}</li>`)
-      .join('');
+    const li = document.createElement('li');
+    li.textContent = text;
+    journalEl.insertBefore(li, journalEl.firstChild);
+    while (journalEl.children.length > MAX_JOURNAL) journalEl.removeChild(journalEl.lastChild);
   }
 
   function update(sim, wiring, extras) {
@@ -210,28 +210,46 @@ export function createHud(root) {
     const t = extras.timerStopped ? extras.stoppedAt : snap.time;
     const mm = Math.floor(t / 60);
     const ss = Math.floor(t % 60).toString().padStart(2, '0');
-    timer.textContent = `${mm}:${ss}`;
+    const timerText = `${mm}:${ss}`;
+    if (timerText !== lastHud.timerText) {
+      lastHud.timerText = timerText;
+      timer.textContent = timerText;
+    }
 
-    // Distance meter: baby position between spawn and parent zone.
+    // Distance meter: baby position between spawn and parent zone (0.1% resolution).
     const total = ROOM.PARENT_ZONE_X - ROOM.SPAWN_X;
     const raw = (snap.torsoX - ROOM.SPAWN_X) / total;
-    const p = Math.max(0, Math.min(1, raw));
-    distFill.style.width = `${p * 100}%`;
-    distBaby.style.left = `calc(${p * 100}% - 12px)`;
+    const distPct = Math.round(Math.max(0, Math.min(1, raw)) * 1000) / 10;
+    if (distPct !== lastHud.distPct) {
+      lastHud.distPct = distPct;
+      distFill.style.width = `${distPct}%`;
+      distBaby.style.left = `calc(${distPct}% - 12px)`;
+    }
 
-    // Milestone pips
-    for (const def of MILESTONE_DEFS) {
-      const pip = milestonesEl.querySelector(`[data-id="${def.id}"]`);
-      if (snap.achieved.has(def.id)) pip.classList.add('lit');
-      else pip.classList.remove('lit');
+    // Milestone pips: the achieved set only changes when level does.
+    if (snap.level !== lastHud.level) {
+      lastHud.level = snap.level;
+      for (const def of MILESTONE_DEFS) {
+        pipElements.get(def.id).classList.toggle('lit', snap.achieved.has(def.id));
+      }
     }
 
     // Calm meter
-    const calmPct = Math.max(0, Math.min(100, snap.calm));
-    calmFill.style.width = `${calmPct}%`;
-    calmValue.textContent = Math.round(calmPct);
-    calmFill.classList.toggle('meltdown', snap.meltdown);
-    calmFill.classList.toggle('low', calmPct < 40);
+    const calmPct = Math.round(Math.max(0, Math.min(100, snap.calm)));
+    if (calmPct !== lastHud.calm) {
+      lastHud.calm = calmPct;
+      calmFill.style.width = `${calmPct}%`;
+      calmValue.textContent = calmPct;
+    }
+    if (snap.meltdown !== lastHud.meltdown) {
+      lastHud.meltdown = snap.meltdown;
+      calmFill.classList.toggle('meltdown', snap.meltdown);
+    }
+    const lowCalm = calmPct < 40;
+    if (lowCalm !== lastHud.low) {
+      lastHud.low = lowCalm;
+      calmFill.classList.toggle('low', lowCalm);
+    }
 
     // Key labels: reveal as proprioception grows
     for (const letter of Object.keys(keyElements)) {
@@ -269,8 +287,22 @@ export function createHud(root) {
     }
   }
 
+  // The sparkline canvas backing store must track devicePixelRatio or it renders
+  // fuzzy on Retina (the main canvases already do this; this one is DOM-side).
+  let sparkW = 220, sparkH = 42;
+  function sizeSparkline() {
+    const dpr = window.devicePixelRatio || 1;
+    sparkW = sparkCanvas.clientWidth || 220;
+    sparkH = sparkCanvas.clientHeight || 42;
+    sparkCanvas.width = Math.round(sparkW * dpr);
+    sparkCanvas.height = Math.round(sparkH * dpr);
+    sparkCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawSparkline();
+  }
+  window.addEventListener('resize', sizeSparkline);
+
   function drawSparkline() {
-    const w = sparkCanvas.width, h = sparkCanvas.height;
+    const w = sparkW, h = sparkH;
     sparkCtx.clearRect(0, 0, w, h);
     if (fitnessHistory.length < 2) {
       sparkCtx.fillStyle = 'rgba(122, 90, 58, 0.4)';
@@ -320,11 +352,6 @@ export function createHud(root) {
     root.querySelector(id).addEventListener('click', handler);
   }
 
-  function bindIntroDismiss(handler) {
-    intro.addEventListener('click', handler);
-    // handler also gets called on the first keydown, via main.js
-  }
-
   function hideIntro() {
     intro.classList.add('hidden');
   }
@@ -333,16 +360,13 @@ export function createHud(root) {
   function hideRlPopover() { rlPopover.classList.add('hidden'); }
   bindButton('#mb-rl-explain', showRlPopover);
   bindButton('#mb-rl-close', hideRlPopover);
+  sizeSparkline();
 
   function getCanvas() { return canvas; }
 
   function formatMeters(v) {
     if (v == null || Number.isNaN(v)) return '·';
     return `${v.toFixed(2)} m`;
-  }
-
-  function escapeHtml(s) {
-    return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
   return {
@@ -353,7 +377,6 @@ export function createHud(root) {
     update,
     setEvolutionStatus,
     bindButton,
-    bindIntroDismiss,
     hideIntro,
     hideRlPopover,
   };

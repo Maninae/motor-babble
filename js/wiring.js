@@ -67,7 +67,7 @@ export function createWiring(seedString) {
       const a = actions[0];
       return `${MUSCLES[a.muscleIndex].label} ${a.direction > 0 ? 'flex' : 'extend'}`;
     }
-    const parts = actions.map((a) => MUSCLES[a.muscleIndex].label.split(' ')[1]);
+    const parts = actions.map((a) => MUSCLES[a.muscleIndex].label);
     return `crossed: ${parts.join(' + ')}`;
   }
 

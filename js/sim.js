@@ -24,6 +24,7 @@ export function createSimulation(seedString) {
     time: 0,
     calm: CALM.START,
     painCooldown: 0,
+    bonkCooldown: 0,
     scrambleTimer: 0,
     meltdownTimer: 0,
     handOnFace: false,
@@ -71,7 +72,7 @@ export function createSimulation(seedString) {
 
   function classifyImpacts(events) {
     /** Turn queued raw impacts into pain / self-bonk events, respecting the pain cooldown. */
-    if (state.time < 1.0) {   // grace period: the spawn drop is not the world's fault
+    if (state.time < PAIN.SPAWN_GRACE_SEC) {
       pendingImpacts.length = 0;
       return;
     }
@@ -81,8 +82,13 @@ export function createSimulation(seedString) {
       const headFloor = (pa === 'head' && pb === 'floor') || (pb === 'head' && pa === 'floor');
 
       if (isHandHead(pa, pb)) {
-        events.push({ type: 'self-bonk' });
-        state.calm = Math.max(0, state.calm - CALM.BONK_COST);
+        // One physical bonk produces several contact points across several steps;
+        // the cooldown collapses them into a single event and a single calm cost.
+        if (state.bonkCooldown <= 0) {
+          state.bonkCooldown = PAIN.BONK_COOLDOWN_SEC;
+          events.push({ type: 'self-bonk' });
+          state.calm = Math.max(0, state.calm - CALM.BONK_COST);
+        }
       } else if ((hasCrib && impulse >= PAIN.CRIB_IMPULSE) || (headFloor && impulse >= PAIN.FLOOR_HEAD_IMPULSE)) {
         if (state.painCooldown <= 0) {
           state.painCooldown = PAIN.COOLDOWN_SEC;
@@ -119,8 +125,8 @@ export function createSimulation(seedString) {
       if (scrambling) {
         noisy[i] = noiseRng() * 2 - 1;
       } else {
-        if (Math.abs(noisy[i]) > 0.02) noisy[i] += n * 0.6 * (noiseRng() * 2 - 1);
-        else if (noiseRng() < NOISE.TWITCH_CHANCE * (0.3 + n)) noisy[i] = (noiseRng() * 2 - 1);
+        if (Math.abs(noisy[i]) > 0.02) noisy[i] += n * NOISE.SMEAR_SCALE * (noiseRng() * 2 - 1);
+        else if (noiseRng() < NOISE.TWITCH_CHANCE * (NOISE.TWITCH_FLOOR + n)) noisy[i] = (noiseRng() * 2 - 1);
       }
       noisy[i] = Math.max(-1, Math.min(1, noisy[i]));
     }
@@ -133,6 +139,7 @@ export function createSimulation(seedString) {
     const events = [];
     state.time += dt;
     state.painCooldown = Math.max(0, state.painCooldown - dt);
+    state.bonkCooldown = Math.max(0, state.bonkCooldown - dt);
     state.scrambleTimer = Math.max(0, state.scrambleTimer - dt);
 
     baby.setNeckStrength(MOTOR.NECK_TORQUE_BASE + milestones.level * MOTOR.NECK_TORQUE_PER_LEVEL);

@@ -61,22 +61,28 @@ export function createEvolution(seedString, createSimulation) {
     return a;
   }
 
-  function evaluate(genome) {
-    /** Fitness on a fresh (identical-seed) sim: forward torso displacement in meters. */
+  async function evaluate(genome) {
+    /** Fitness on a fresh (identical-seed) sim: forward torso displacement in meters.
+     *  Yields to the event loop every EVAL_STEPS_PER_TICK physics steps so the live
+     *  game keeps animating, and aborts (returns null) if a stop was requested.
+     */
     const sim = createSimulation(seedString);
     const dt = 1 / 60;
     const startX = sim.baby.parts.torso.getPosition().x;
     const totalSteps = Math.round(EVAL_SIM_SECONDS / dt);
     for (let s = 0; s < totalSteps; s++) {
-      const t = s * dt;
-      sim.step(activationsAtTime(genome, t), dt);
+      if (s > 0 && s % EVAL_STEPS_PER_TICK === 0) {
+        if (stopRequested) return null;
+        await tick();
+      }
+      sim.step(activationsAtTime(genome, s * dt), dt);
     }
     return sim.baby.parts.torso.getPosition().x - startX;
   }
 
   async function run(generations) {
-    /** Evaluate {POPULATION} genomes across N generations, yielding to the UI
-     *  between genome batches so the frame loop never stalls.
+    /** Evaluate {POPULATION} genomes across N generations. evaluate() yields internally,
+     *  so the frame loop never stalls for more than a fraction of an evaluation.
      */
     if (running) return;
     running = true;
@@ -87,11 +93,11 @@ export function createEvolution(seedString, createSimulation) {
       const fitnesses = [];
       for (let i = 0; i < population.length; i++) {
         if (stopRequested) break;
-        const f = evaluate(population[i]);
+        const f = await evaluate(population[i]);
+        if (f == null) break;
         fitnesses.push({ genome: population[i], f });
-        // Yield to the event loop every few evaluations so the UI stays responsive.
-        if (i % 2 === 1) await tick();
       }
+      if (stopRequested || fitnesses.length === 0) break;
       fitnesses.sort((a, b) => b.f - a.f);
       const best = fitnesses[0];
       generation++;
@@ -132,6 +138,14 @@ export function createEvolution(seedString, createSimulation) {
   function stopDriving() { driving = false; emit(); }
   function stop() { stopRequested = true; }
 
+  function dispose() {
+    /** Kill this instance for good (new body): abort the search, stop driving,
+     *  and drop listeners so a stale final emit cannot overwrite the new run's HUD. */
+    stopRequested = true;
+    driving = false;
+    listeners = [];
+  }
+
   function onChange(fn) { listeners.push(fn); }
   function emit() {
     for (const fn of listeners) fn(status());
@@ -144,7 +158,7 @@ export function createEvolution(seedString, createSimulation) {
     };
   }
 
-  return { run, stop, drive, toggleDrive, stopDriving, onChange, status, get driving() { return driving; }, get driveT0() { return driveT0; }, get bestGenome() { return bestGenome; }};
+  return { run, stop, dispose, drive, toggleDrive, stopDriving, onChange, status, get driving() { return driving; }, get driveT0() { return driveT0; }, get bestGenome() { return bestGenome; }};
 }
 
 function randn() {

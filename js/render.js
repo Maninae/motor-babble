@@ -115,20 +115,38 @@ export function createRenderer(canvas) {
     g.moveTo(winX, winY + winH / 2); g.lineTo(winX + winW, winY + winH / 2);
     g.stroke();
 
-    // Wall art: a heart print above the crib
+    // Wall art: framed heart print, positioned as intentional wall decor at
+    // typical picture-hanging height (mid-wall, well clear of the ceiling mobile).
+    const artW = 92, artH = 108;
+    const artCx = width * 0.24;
+    const artCy = floorScreenY - 245;
+    // Frame drop shadow
+    g.fillStyle = 'rgba(60, 40, 20, 0.14)';
+    roundedRect(g, artCx - artW / 2 + 4, artCy - artH / 2 + 5, artW, artH, 6); g.fill();
+    // Wooden frame
+    g.fillStyle = '#b48b62';
+    roundedRect(g, artCx - artW / 2, artCy - artH / 2, artW, artH, 6); g.fill();
+    g.strokeStyle = '#8f6a45'; g.lineWidth = 1;
+    roundedRect(g, artCx - artW / 2, artCy - artH / 2, artW, artH, 6); g.stroke();
+    // Cream mat
+    g.fillStyle = '#fff6e6';
+    roundedRect(g, artCx - artW / 2 + 7, artCy - artH / 2 + 7, artW - 14, artH - 14, 3); g.fill();
+    // Heart on the mat
     g.fillStyle = '#e67589';
-    const hx = width * 0.14, hy = floorScreenY - 220;
+    const hx = artCx, hy = artCy - 4;
     g.beginPath();
-    g.moveTo(hx, hy + 12);
-    g.bezierCurveTo(hx - 22, hy - 8, hx - 22, hy + 22, hx, hy + 32);
-    g.bezierCurveTo(hx + 22, hy + 22, hx + 22, hy - 8, hx, hy + 12);
+    g.moveTo(hx, hy + 10);
+    g.bezierCurveTo(hx - 18, hy - 8, hx - 18, hy + 18, hx, hy + 26);
+    g.bezierCurveTo(hx + 18, hy + 18, hx + 18, hy - 8, hx, hy + 10);
     g.fill();
-    g.strokeStyle = '#ffffffcc'; g.lineWidth = 1.5;
-    g.stroke();
+    // Tiny nail highlight above the frame
+    g.fillStyle = 'rgba(90, 60, 30, 0.35)';
+    circle(g, artCx, artCy - artH / 2 - 6, 1.8); g.fill();
   }
 
   function drawFloor(g) {
-    /** Wooden floor with plank lines and a soft rug under the baby. */
+    /** Wooden floor with plank lines, a warm sunlight pool under the window,
+     *  and a cozy oval rug tucked under the baby's play area. */
     g.fillStyle = PALETTE.floor;
     g.fillRect(0, floorScreenY, width, height - floorScreenY);
     // Plank lines with slight variation
@@ -152,23 +170,48 @@ export function createRenderer(canvas) {
       g.stroke();
     }
     g.globalAlpha = 1;
-    // Rug: circle under the spawn area
-    const rugCenter = worldToScreen(ROOM.SPAWN_X + 0.2, 0);
-    const rugRx = pxPerM * 1.6;
-    const rugRy = pxPerM * 0.45;
+
+    // Warm sunlight pool on the floor beneath the window. Soft, low-opacity,
+    // sits behind the rug so the rug still reads clearly on top.
+    const lightCx = width * 0.62;
+    const lightCy = floorScreenY + 40;
+    const lightR = Math.min(180, width * 0.18);
+    g.save();
+    g.translate(lightCx, lightCy);
+    g.scale(1, 0.42);
+    const lightGrad = g.createRadialGradient(0, 0, 8, 0, 0, lightR);
+    lightGrad.addColorStop(0, 'rgba(255, 236, 190, 0.42)');
+    lightGrad.addColorStop(1, 'rgba(255, 236, 190, 0)');
+    g.fillStyle = lightGrad;
+    g.beginPath(); g.arc(0, 0, lightR, 0, Math.PI * 2); g.fill();
+    g.restore();
+
+    // Cozy rug: a small oval tucked under the baby's spawn area (about a third
+    // of the visible floor width) so the wooden planks stay visible around it.
+    const rugCenter = worldToScreen(ROOM.SPAWN_X + 0.15, 0);
+    const rugRx = pxPerM * 0.68;
+    const rugRy = pxPerM * 0.2;
+    // Rug shadow catching on the floor
+    g.fillStyle = 'rgba(60, 40, 25, 0.16)';
+    ellipse(g, rugCenter.x + 4, rugCenter.y + 10, rugRx * 1.02, rugRy * 1.05); g.fill();
+    // Outer rug
     g.fillStyle = PALETTE.rug;
     ellipse(g, rugCenter.x, rugCenter.y + 6, rugRx, rugRy); g.fill();
+    // Inner rug (concentric pattern)
     g.fillStyle = PALETTE.rugInner;
-    ellipse(g, rugCenter.x, rugCenter.y + 4, rugRx * 0.72, rugRy * 0.72); g.fill();
-    // Rug tassels
+    ellipse(g, rugCenter.x, rugCenter.y + 5, rugRx * 0.72, rugRy * 0.72); g.fill();
+    // Little cream medallion in the center
+    g.fillStyle = '#fbe7ea';
+    ellipse(g, rugCenter.x, rugCenter.y + 5, rugRx * 0.22, rugRy * 0.28); g.fill();
+    // Rug tassels around the rim
     g.strokeStyle = '#c98a90';
     g.lineWidth = 1.5;
-    for (let i = 0; i < 20; i++) {
-      const a = (i / 20) * Math.PI * 2;
+    for (let i = 0; i < 22; i++) {
+      const a = (i / 22) * Math.PI * 2;
       const x1 = rugCenter.x + Math.cos(a) * rugRx;
       const y1 = rugCenter.y + 6 + Math.sin(a) * rugRy;
-      const x2 = x1 + Math.cos(a) * 6;
-      const y2 = y1 + Math.sin(a) * 6;
+      const x2 = x1 + Math.cos(a) * 5;
+      const y2 = y1 + Math.sin(a) * 5;
       g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
     }
   }
@@ -207,7 +250,9 @@ export function createRenderer(canvas) {
     for (let i = 0; i < 6; i++) {
       circle(g, 40 + i * (width - 80) / 5, 12, 3); g.fill();
     }
-    const anchor = { x: width * 0.38, y: 40 };
+    // Mobile hangs above the baby's spawn area so it feels intentional.
+    const spawnScreen = worldToScreen(ROOM.SPAWN_X + 0.15, 0);
+    const anchor = { x: Math.max(120, Math.min(width * 0.55, spawnScreen.x)), y: 40 };
     const sway = reducedMotion ? 0 : Math.sin(ambient.t * 1.1) * 6;
     g.strokeStyle = '#7f6c58';
     g.lineWidth = 2;
@@ -252,11 +297,56 @@ export function createRenderer(canvas) {
      *  background composition still calls it in the same order. */
   }
 
+  function drawTeddyBear(g) {
+    /** Small teddy bear propped near the crib, sitting on the floor. Blurred with
+     *  the rest of the background, so it reads as a soft warm shape at a glance. */
+    const groundPt = worldToScreen(ROOM.CRIB_BAR_X + 0.28, 0);
+    const cxT = groundPt.x;
+    const cyT = groundPt.y;
+    const m = pxPerM;
+    // Contact shadow
+    g.fillStyle = 'rgba(60, 40, 25, 0.22)';
+    ellipse(g, cxT + 2, cyT + 4, 0.09 * m, 0.02 * m); g.fill();
+    // Body
+    g.fillStyle = '#c39167';
+    ellipse(g, cxT, cyT - 0.07 * m, 0.075 * m, 0.085 * m); g.fill();
+    // Head
+    g.fillStyle = '#c9976d';
+    circle(g, cxT, cyT - 0.17 * m, 0.055 * m); g.fill();
+    // Ears
+    circle(g, cxT - 0.04 * m, cyT - 0.21 * m, 0.022 * m); g.fill();
+    circle(g, cxT + 0.04 * m, cyT - 0.21 * m, 0.022 * m); g.fill();
+    // Inner ears
+    g.fillStyle = '#e5b98d';
+    circle(g, cxT - 0.04 * m, cyT - 0.21 * m, 0.012 * m); g.fill();
+    circle(g, cxT + 0.04 * m, cyT - 0.21 * m, 0.012 * m); g.fill();
+    // Muzzle
+    g.fillStyle = '#efd5b3';
+    ellipse(g, cxT, cyT - 0.155 * m, 0.028 * m, 0.02 * m); g.fill();
+    // Nose
+    g.fillStyle = '#2b1d15';
+    circle(g, cxT, cyT - 0.165 * m, 0.006 * m); g.fill();
+    // Eyes
+    circle(g, cxT - 0.018 * m, cyT - 0.185 * m, 0.005 * m); g.fill();
+    circle(g, cxT + 0.018 * m, cyT - 0.185 * m, 0.005 * m); g.fill();
+    // Little tummy patch
+    g.fillStyle = '#e5b98d';
+    ellipse(g, cxT, cyT - 0.06 * m, 0.04 * m, 0.05 * m); g.fill();
+    // Legs poking forward
+    g.fillStyle = '#c39167';
+    ellipse(g, cxT - 0.03 * m, cyT - 0.005 * m, 0.025 * m, 0.016 * m); g.fill();
+    ellipse(g, cxT + 0.03 * m, cyT - 0.005 * m, 0.025 * m, 0.016 * m); g.fill();
+    // Arms out to the sides
+    ellipse(g, cxT - 0.065 * m, cyT - 0.08 * m, 0.025 * m, 0.04 * m); g.fill();
+    ellipse(g, cxT + 0.065 * m, cyT - 0.08 * m, 0.025 * m, 0.04 * m); g.fill();
+  }
+
   function renderBackground() {
     /** Everything that gets vision-blurred. Redrawn every frame because the mobile sways. */
     bgCtx.clearRect(0, 0, width, height);
     drawWall(bgCtx);
     drawFloor(bgCtx);
+    drawTeddyBear(bgCtx);
     drawCrib(bgCtx);
     drawMobile(bgCtx);
     drawParentSilhouette(bgCtx);
@@ -264,96 +354,342 @@ export function createRenderer(canvas) {
 
   // ---------- Foreground (crisp): parent face, baby, floor line, effects --------
 
-  function drawParentFace(g) {
-    /** Warm parent leaning in from the right, arms open toward the baby. Always crisp.
-     *  Kept small (head ~54 px radius) so the baby stays the focal point. */
-    const anchor = worldToScreen(ROOM.PARENT_ZONE_X, 0);
-    // Position the parent's head near the top-right, clamped so it never leaves the frame.
-    const p = { x: Math.min(width - 88, anchor.x + 40), y: Math.max(120, anchor.y - 220) };
+  function drawParentFigure(g) {
+    /** A warm parent sitting cross-legged on the floor, arms open toward the baby.
+     *
+     *  Anchored in world coords at ROOM.PARENT_ZONE_X so the parent is a real object
+     *  in the room and the camera pans past them naturally. All sizes derive from
+     *  pxPerM so the parent scales with the canvas alongside the baby and stays at a
+     *  believable adult-vs-newborn ratio (roughly 2x the baby's supine length).
+     *  Draw order (back-to-front): back leg, torso, near arm behind, near leg, hair
+     *  back, head, face, near arm forward, hands. Kept crisp: the newborn-vision
+     *  blur only touches the background layer.
+     */
+    const groundPt = worldToScreen(ROOM.PARENT_ZONE_X + 0.15, 0);
+    const cx = Math.round(groundPt.x);
+    const fy = Math.round(groundPt.y);
+    const m = pxPerM;  // world-meter -> pixels
+
+    // Proportions (in meters). Total seated height ~0.72 m, head r ~0.11 m.
+    const headR = 0.11 * m;
+    const shoulderY = fy - 0.44 * m;
+    const shoulderHW = 0.19 * m;
+    const lapTopY = fy - 0.13 * m;
+    const lapHW = 0.34 * m;
+
     const skin = PALETTE.parentSkin;
-    const headR = 46;
-    const sweaterX = p.x - 78;
-    const sweaterTop = p.y + headR + 6;
+    const skinShade = shade(skin, -0.12);
+    const sweater = '#c58f9a';
+    const sweaterShade = '#a26a78';
+    const sweaterHi = '#d6a4ae';
+    const pants = '#8f6f96';
+    const pantsShade = '#6f5478';
 
-    // Sweater/body: rounded shape below the head, filling the right side of the frame.
-    g.fillStyle = '#c58f9a';
-    roundedRect(g, sweaterX, sweaterTop, width - sweaterX + 30, height - sweaterTop + 20, 32); g.fill();
-    // Subtle sweater texture (soft stripes)
-    g.fillStyle = 'rgba(255,255,255,0.07)';
-    for (let i = 0; i < 8; i++) {
-      const sx = sweaterX + 20 + i * 26;
-      g.fillRect(sx, sweaterTop + 12, 4, 220);
-    }
-    // Neck cutout
-    g.fillStyle = shade('#c58f9a', -0.2);
-    ellipse(g, p.x, sweaterTop + 2, 32, 10); g.fill();
-    // Neck skin
-    g.fillStyle = skin;
-    roundedRect(g, p.x - 22, p.y + headR - 14, 44, 24, 10); g.fill();
+    // ---- Crossed legs (a wide, low, rounded bell sitting on the floor) ----
+    g.fillStyle = pants;
+    g.beginPath();
+    g.moveTo(cx - shoulderHW - 0.02 * m, lapTopY + 0.02 * m);
+    // Left thigh arc down to floor
+    g.quadraticCurveTo(cx - lapHW - 0.06 * m, fy - 0.08 * m, cx - lapHW, fy - 0.01 * m);
+    // Floor sweep across the crossed legs
+    g.quadraticCurveTo(cx, fy + 0.02 * m, cx + lapHW, fy - 0.01 * m);
+    // Right thigh arc up to torso
+    g.quadraticCurveTo(cx + lapHW + 0.06 * m, fy - 0.08 * m, cx + shoulderHW + 0.02 * m, lapTopY + 0.02 * m);
+    // Top curve joining the two sides (belt line, slightly convex)
+    g.quadraticCurveTo(cx, lapTopY - 0.04 * m, cx - shoulderHW - 0.02 * m, lapTopY + 0.02 * m);
+    g.closePath();
+    g.fill();
+    // Pants shading on the underside for volume
+    g.fillStyle = pantsShade;
+    g.beginPath();
+    g.moveTo(cx - lapHW * 0.95, fy - 0.02 * m);
+    g.quadraticCurveTo(cx, fy + 0.02 * m, cx + lapHW * 0.95, fy - 0.02 * m);
+    g.quadraticCurveTo(cx, fy - 0.06 * m, cx - lapHW * 0.95, fy - 0.02 * m);
+    g.closePath();
+    g.fill();
+    // Two knee bumps (softer highlights on either lap side)
+    g.fillStyle = shade(pants, 0.06);
+    ellipse(g, cx - lapHW * 0.62, lapTopY + 0.03 * m, 0.09 * m, 0.05 * m); g.fill();
+    ellipse(g, cx + lapHW * 0.62, lapTopY + 0.03 * m, 0.09 * m, 0.05 * m); g.fill();
+    // Crossed shins: soft darker "V" where legs fold across each other
+    g.strokeStyle = pantsShade;
+    g.lineWidth = 2.5; g.lineCap = 'round';
+    g.beginPath();
+    g.moveTo(cx - 0.16 * m, fy - 0.05 * m);
+    g.quadraticCurveTo(cx, fy - 0.08 * m, cx + 0.14 * m, fy - 0.04 * m);
+    g.stroke();
+    // Two bare feet peeking out (soft skin ellipses tucked under the lap crossing)
+    g.fillStyle = skinShade;
+    ellipse(g, cx - 0.05 * m, fy - 0.015 * m, 0.045 * m, 0.02 * m); g.fill();
+    ellipse(g, cx + 0.09 * m, fy - 0.02 * m, 0.05 * m, 0.022 * m); g.fill();
 
-    // Arms reaching in toward the baby (from where the sweater shoulder is)
-    const shoulderX = sweaterX + 30;
-    const shoulderY = sweaterTop + 34;
-    g.strokeStyle = '#c58f9a';   // sleeve
-    g.lineWidth = 34;
-    g.lineCap = 'round';
-    // Upper arm
+    // ---- Torso (dusty rose sweater rising from the lap) ----
+    // Draw as one flowing rounded shape: shoulders wider, waist narrower.
+    g.fillStyle = sweater;
     g.beginPath();
-    g.moveTo(shoulderX, shoulderY);
-    g.quadraticCurveTo(shoulderX - 60, shoulderY + 20, shoulderX - 120, shoulderY + 60);
-    g.stroke();
-    // Second arm angled down
+    // Left shoulder top
+    g.moveTo(cx - shoulderHW, shoulderY + 0.03 * m);
+    // Left side down to waist
+    g.quadraticCurveTo(cx - shoulderHW - 0.02 * m, (shoulderY + lapTopY) / 2 + 0.02 * m,
+                       cx - shoulderHW * 0.9, lapTopY + 0.01 * m);
+    // Waist across
+    g.lineTo(cx + shoulderHW * 0.9, lapTopY + 0.01 * m);
+    // Right side up to shoulder
+    g.quadraticCurveTo(cx + shoulderHW + 0.02 * m, (shoulderY + lapTopY) / 2 + 0.02 * m,
+                       cx + shoulderHW, shoulderY + 0.03 * m);
+    // Rounded shoulder line across the top
+    g.quadraticCurveTo(cx, shoulderY - 0.03 * m, cx - shoulderHW, shoulderY + 0.03 * m);
+    g.closePath();
+    g.fill();
+    // Soft shading down the far (right) side for roundness. Kept low-opacity so it
+    // reads as gentle volume rather than a distinct dark stripe.
+    g.save();
+    g.globalAlpha = 0.35;
+    g.fillStyle = sweaterShade;
     g.beginPath();
-    g.moveTo(shoulderX + 20, shoulderY + 80);
-    g.quadraticCurveTo(shoulderX - 40, shoulderY + 130, shoulderX - 90, shoulderY + 180);
-    g.stroke();
-    // Wrist skin (cuff) at end of each arm
-    g.fillStyle = skin;
-    circle(g, shoulderX - 120, shoulderY + 60, 18); g.fill();
-    circle(g, shoulderX - 90, shoulderY + 180, 20); g.fill();
-    // Finger hints
-    g.strokeStyle = shade(skin, -0.18);
-    g.lineWidth = 1.5;
-    for (let i = 0; i < 3; i++) {
+    g.moveTo(cx + shoulderHW - 0.01 * m, shoulderY + 0.05 * m);
+    g.quadraticCurveTo(cx + shoulderHW + 0.005 * m, (shoulderY + lapTopY) / 2, cx + shoulderHW * 0.9, lapTopY);
+    g.lineTo(cx + shoulderHW * 0.7, lapTopY);
+    g.quadraticCurveTo(cx + shoulderHW - 0.04 * m, (shoulderY + lapTopY) / 2, cx + shoulderHW - 0.06 * m, shoulderY + 0.05 * m);
+    g.closePath(); g.fill();
+    g.restore();
+    // Knit ribbing texture: subtle thin vertical lines
+    g.strokeStyle = sweaterShade;
+    g.lineWidth = 0.7;
+    g.globalAlpha = 0.4;
+    for (let i = -4; i <= 4; i++) {
+      const sx = cx + i * 0.038 * m;
+      if (Math.abs(sx - cx) > shoulderHW * 0.92) continue;
       g.beginPath();
-      g.arc(shoulderX - 120, shoulderY + 60, 18, Math.PI * (0.35 + i * 0.1), Math.PI * (0.55 + i * 0.1));
+      g.moveTo(sx, shoulderY + 0.07 * m);
+      g.lineTo(sx, lapTopY - 0.005 * m);
+      g.stroke();
+    }
+    g.globalAlpha = 1;
+    // Sweater collar/neckline: darker soft V under the neck
+    g.fillStyle = sweaterShade;
+    g.beginPath();
+    g.moveTo(cx - 0.05 * m, shoulderY + 0.005 * m);
+    g.quadraticCurveTo(cx, shoulderY + 0.04 * m, cx + 0.05 * m, shoulderY + 0.005 * m);
+    g.quadraticCurveTo(cx, shoulderY - 0.005 * m, cx - 0.05 * m, shoulderY + 0.005 * m);
+    g.closePath(); g.fill();
+    // Neck (skin peeking above collar)
+    g.fillStyle = skin;
+    roundedRect(g, cx - 0.045 * m, shoulderY - 0.06 * m, 0.09 * m, 0.08 * m, 0.02 * m); g.fill();
+    // Small collar shadow line at the neck base
+    g.fillStyle = 'rgba(140, 90, 70, 0.18)';
+    ellipse(g, cx, shoulderY, 0.055 * m, 0.014 * m); g.fill();
+
+    // ---- Arms (sleeves reaching open toward the baby, mittens on the floor) ----
+    // Near arm (baby-facing side): sweeps outward past the lap, hand resting on
+    // the floor with the palm turned up toward the baby, as if inviting them over.
+    const shoulderLX = cx - shoulderHW + 0.015 * m;
+    const shoulderLY = shoulderY + 0.05 * m;
+    const nearHandX = cx - 0.5 * m;
+    const nearHandY = fy - 0.045 * m;
+    g.strokeStyle = sweater;
+    g.lineWidth = 0.115 * m;
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    g.beginPath();
+    g.moveTo(shoulderLX, shoulderLY);
+    // First control: bring elbow OUT away from the torso so the arm reads as extended
+    g.quadraticCurveTo(cx - 0.38 * m, shoulderY + 0.18 * m,
+                       nearHandX + 0.05 * m, nearHandY - 0.03 * m);
+    g.stroke();
+    // Sleeve upper highlight to hint at a rounded arm cylinder
+    g.strokeStyle = sweaterHi;
+    g.lineWidth = 0.035 * m;
+    g.globalAlpha = 0.55;
+    g.beginPath();
+    g.moveTo(shoulderLX - 0.01 * m, shoulderLY - 0.02 * m);
+    g.quadraticCurveTo(cx - 0.38 * m, shoulderY + 0.14 * m,
+                       nearHandX + 0.05 * m, nearHandY - 0.05 * m);
+    g.stroke();
+    g.globalAlpha = 1;
+    // Cuff at wrist
+    g.strokeStyle = sweaterShade;
+    g.lineWidth = 0.02 * m;
+    g.beginPath();
+    g.arc(nearHandX + 0.05 * m, nearHandY - 0.025 * m, 0.06 * m,
+          Math.PI * 0.55, Math.PI * 1.55);
+    g.stroke();
+    // Near hand: soft mitten resting on the floor, palm up toward the baby
+    g.fillStyle = skin;
+    ellipse(g, nearHandX, nearHandY, 0.085 * m, 0.06 * m); g.fill();
+    // Thumb bump on the upper edge of the mitten
+    g.fillStyle = shade(skin, -0.05);
+    ellipse(g, nearHandX + 0.03 * m, nearHandY - 0.045 * m, 0.028 * m, 0.022 * m); g.fill();
+    // Four soft finger dimples along the top curve of the mitten
+    g.strokeStyle = shade(skin, -0.22); g.lineWidth = 1.4;
+    for (let i = 0; i < 4; i++) {
+      const fa = Math.PI + (i + 0.5) * (Math.PI / 5);
+      g.beginPath();
+      g.arc(nearHandX, nearHandY, 0.075 * m, fa - 0.14, fa + 0.14);
+      g.stroke();
+    }
+    // Palm crease line on the bottom edge (subtle)
+    g.strokeStyle = shade(skin, -0.18); g.lineWidth = 1.2;
+    g.beginPath();
+    g.arc(nearHandX, nearHandY + 0.012 * m, 0.06 * m, Math.PI * 0.2, Math.PI * 0.8);
+    g.stroke();
+
+    // Far arm (right side): also open but arcing forward, hand resting on floor.
+    const shoulderRX = cx + shoulderHW - 0.015 * m;
+    const shoulderRY = shoulderY + 0.05 * m;
+    const farHandX = cx + 0.42 * m;
+    const farHandY = fy - 0.045 * m;
+    g.strokeStyle = sweater;
+    g.lineWidth = 0.11 * m;
+    g.beginPath();
+    g.moveTo(shoulderRX, shoulderRY);
+    g.quadraticCurveTo(cx + 0.4 * m, shoulderY + 0.18 * m,
+                       farHandX - 0.04 * m, farHandY - 0.03 * m);
+    g.stroke();
+    // Cuff
+    g.strokeStyle = sweaterShade;
+    g.lineWidth = 0.02 * m;
+    g.beginPath();
+    g.arc(farHandX - 0.04 * m, farHandY - 0.025 * m, 0.055 * m,
+          Math.PI * 1.45, Math.PI * 0.45);
+    g.stroke();
+    // Far hand: slightly darker (further from viewer's light)
+    g.fillStyle = skinShade;
+    ellipse(g, farHandX, farHandY, 0.078 * m, 0.055 * m); g.fill();
+    // Thumb bump
+    g.fillStyle = shade(skinShade, -0.05);
+    ellipse(g, farHandX - 0.028 * m, farHandY - 0.04 * m, 0.026 * m, 0.02 * m); g.fill();
+    // Finger dimples
+    g.strokeStyle = shade(skinShade, -0.22); g.lineWidth = 1.3;
+    for (let i = 0; i < 4; i++) {
+      const fa = Math.PI + (i + 0.5) * (Math.PI / 5);
+      g.beginPath();
+      g.arc(farHandX, farHandY, 0.07 * m, fa - 0.14, fa + 0.14);
       g.stroke();
     }
 
-    // Head
-    g.fillStyle = skin;
-    circle(g, p.x, p.y, headR); g.fill();
-    // Face shadow (light from left, subtle)
-    g.fillStyle = 'rgba(200, 140, 100, 0.14)';
-    ellipse(g, p.x + 14, p.y, 32, headR - 4); g.fill();
-    // Hair: warm brown bob
+    // ---- Head + face (warm, gentle, looking down toward the baby) ----
+    const headX = cx;
+    const headY = shoulderY - headR + 0.01 * m;
+
+    // Hair back layer (soft bob outline behind the head, extending past the ears)
     g.fillStyle = PALETTE.parentHair;
     g.beginPath();
-    g.moveTo(p.x - headR + 4, p.y - 4);
-    g.quadraticCurveTo(p.x - headR + 2, p.y - headR - 12, p.x, p.y - headR - 4);
-    g.quadraticCurveTo(p.x + headR - 2, p.y - headR - 8, p.x + headR - 2, p.y + 2);
-    g.quadraticCurveTo(p.x + 22, p.y - 22, p.x, p.y - 22);
-    g.quadraticCurveTo(p.x - 22, p.y - 22, p.x - headR + 4, p.y - 4);
+    g.ellipse(headX, headY - 0.01 * m, headR + 0.028 * m, headR + 0.02 * m, 0, 0, Math.PI * 2);
     g.fill();
-    // Ear tuck
-    g.fillStyle = shade(skin, -0.15);
-    ellipse(g, p.x - headR + 4, p.y + 4, 5, 9); g.fill();
-    // Eyes: happy crescents
-    g.strokeStyle = '#3b2418';
-    g.lineWidth = 3;
-    g.lineCap = 'round';
+    // A small hair "flick" behind the ear on the near side for softness
     g.beginPath();
-    g.arc(p.x - 16, p.y, 7, Math.PI * 0.15, Math.PI * 0.85); g.stroke();
+    g.moveTo(headX - headR - 0.008 * m, headY + 0.04 * m);
+    g.quadraticCurveTo(headX - headR - 0.03 * m, headY + 0.07 * m,
+                       headX - headR + 0.01 * m, headY + 0.09 * m);
+    g.quadraticCurveTo(headX - headR + 0.005 * m, headY + 0.05 * m,
+                       headX - headR - 0.008 * m, headY + 0.04 * m);
+    g.fill();
+    // Head
+    g.fillStyle = skin;
+    circle(g, headX, headY, headR); g.fill();
+    // Face volume shading on the right/far side
+    g.fillStyle = 'rgba(200, 140, 100, 0.15)';
+    ellipse(g, headX + 0.03 * m, headY + 0.005 * m, 0.06 * m, headR - 0.01 * m); g.fill();
+    // Hair front: soft asymmetric bangs sweeping across the forehead
+    g.fillStyle = PALETTE.parentHair;
     g.beginPath();
-    g.arc(p.x + 16, p.y, 7, Math.PI * 0.15, Math.PI * 0.85); g.stroke();
-    // Blushes
+    g.moveTo(headX - headR + 0.01 * m, headY - 0.005 * m);
+    g.quadraticCurveTo(headX - headR - 0.008 * m, headY - headR - 0.005 * m,
+                       headX - 0.02 * m, headY - headR + 0.02 * m);
+    g.quadraticCurveTo(headX + 0.03 * m, headY - headR - 0.03 * m,
+                       headX + headR - 0.005 * m, headY - 0.008 * m);
+    g.quadraticCurveTo(headX + headR - 0.005 * m, headY - headR * 0.75,
+                       headX + 0.05 * m, headY - headR * 0.5);
+    g.quadraticCurveTo(headX - 0.03 * m, headY - headR * 0.3,
+                       headX - headR + 0.01 * m, headY - 0.005 * m);
+    g.fill();
+    // A single soft hair strand across the forehead for character
+    g.strokeStyle = shade(PALETTE.parentHair, 0.12); g.lineWidth = 1.6; g.lineCap = 'round';
+    g.beginPath();
+    g.moveTo(headX - 0.045 * m, headY - headR + 0.02 * m);
+    g.quadraticCurveTo(headX - 0.02 * m, headY - headR + 0.008 * m, headX + 0.02 * m, headY - headR + 0.028 * m);
+    g.stroke();
+    // Little ear peeking on the near (baby-facing) side
+    g.fillStyle = skinShade;
+    ellipse(g, headX - headR + 0.008 * m, headY + 0.018 * m, 0.014 * m, 0.024 * m); g.fill();
+
+    // Warm brows: gentle arches, hair-colored so they read soft
+    g.strokeStyle = shade(PALETTE.parentHair, 0.08); g.lineWidth = 2.6; g.lineCap = 'round';
+    g.beginPath();
+    g.moveTo(headX - 0.05 * m, headY - 0.028 * m);
+    g.quadraticCurveTo(headX - 0.036 * m, headY - 0.04 * m, headX - 0.022 * m, headY - 0.03 * m);
+    g.stroke();
+    g.beginPath();
+    g.moveTo(headX + 0.022 * m, headY - 0.03 * m);
+    g.quadraticCurveTo(headX + 0.036 * m, headY - 0.04 * m, headX + 0.05 * m, headY - 0.028 * m);
+    g.stroke();
+    // Eyes: soft closed happy crescents (arced smiles)
+    g.strokeStyle = '#2b1d15'; g.lineWidth = 3;
+    g.beginPath();
+    g.arc(headX - 0.036 * m, headY - 0.003 * m, 0.02 * m, Math.PI * 0.15, Math.PI * 0.85); g.stroke();
+    g.beginPath();
+    g.arc(headX + 0.036 * m, headY - 0.003 * m, 0.02 * m, Math.PI * 0.15, Math.PI * 0.85); g.stroke();
+    // Cheek blushes
     g.fillStyle = 'rgba(230, 130, 130, 0.55)';
-    ellipse(g, p.x - 22, p.y + 14, 8, 5); g.fill();
-    ellipse(g, p.x + 22, p.y + 14, 8, 5); g.fill();
-    // Warm smile
-    g.strokeStyle = '#8a3f3f'; g.lineWidth = 3;
+    ellipse(g, headX - 0.052 * m, headY + 0.03 * m, 0.024 * m, 0.014 * m); g.fill();
+    ellipse(g, headX + 0.052 * m, headY + 0.03 * m, 0.024 * m, 0.014 * m); g.fill();
+    // Warm smile: a little wider and thicker so it reads clearly
+    g.strokeStyle = '#8a3f3f'; g.lineWidth = 3.2; g.lineCap = 'round';
     g.beginPath();
-    g.arc(p.x, p.y + 18, 14, Math.PI * 0.15, Math.PI * 0.85); g.stroke();
+    g.arc(headX, headY + 0.032 * m, 0.036 * m, Math.PI * 0.13, Math.PI * 0.87); g.stroke();
+    // Tiny upper lip peak, subtle
+    g.strokeStyle = '#8a3f3f'; g.lineWidth = 1.8;
+    g.beginPath();
+    g.moveTo(headX - 0.008 * m, headY + 0.03 * m);
+    g.quadraticCurveTo(headX, headY + 0.024 * m, headX + 0.008 * m, headY + 0.03 * m);
+    g.stroke();
+    // Nose hint (soft skin shadow under the bridge)
+    g.strokeStyle = shade(skin, -0.28); g.lineWidth = 1.6;
+    g.beginPath();
+    g.moveTo(headX - 0.006 * m, headY + 0.008 * m);
+    g.quadraticCurveTo(headX + 0.004 * m, headY + 0.02 * m, headX + 0.012 * m, headY + 0.01 * m);
+    g.stroke();
+  }
+
+  function drawParentContactShadow(g) {
+    /** Soft local shadow under the parent's crossed legs, replacing the old
+     *  full-width floor band. Kept subtle so the wooden floor still reads. */
+    const groundPt = worldToScreen(ROOM.PARENT_ZONE_X + 0.15, 0);
+    const s = { x: groundPt.x, y: groundPt.y };
+    const shadowRx = pxPerM * 0.42;
+    const shadowRy = pxPerM * 0.08;
+    g.save();
+    g.translate(s.x, s.y + 4);
+    g.scale(1, shadowRy / shadowRx);
+    const grad = g.createRadialGradient(0, 0, 4, 0, 0, shadowRx);
+    grad.addColorStop(0, 'rgba(60, 40, 25, 0.32)');
+    grad.addColorStop(1, 'rgba(60, 40, 25, 0)');
+    g.fillStyle = grad;
+    g.beginPath();
+    g.arc(0, 0, shadowRx, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
+  }
+
+  function drawBabyContactShadow(g, sim) {
+    /** Local soft shadow directly under the baby's torso. This is the crisp
+     *  contact cue that replaces the old scene-wide floor band. */
+    const torsoPos = sim.baby.parts.torso.getPosition();
+    const s = worldToScreen(torsoPos.x, 0);
+    const shadowRx = pxPerM * 0.22;
+    const shadowRy = pxPerM * 0.05;
+    g.save();
+    g.translate(s.x, s.y + 4);
+    g.scale(1, shadowRy / shadowRx);
+    const grad = g.createRadialGradient(0, 0, 2, 0, 0, shadowRx);
+    grad.addColorStop(0, 'rgba(60, 40, 25, 0.35)');
+    grad.addColorStop(1, 'rgba(60, 40, 25, 0)');
+    g.fillStyle = grad;
+    g.beginPath();
+    g.arc(0, 0, shadowRx, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
   }
 
   function drawBaby(g, sim) {
@@ -854,10 +1190,13 @@ export function createRenderer(canvas) {
     ctx.drawImage(bgCanvas, 0, 0, canvas.width, canvas.height, 0, 0, width, height);
     ctx.filter = 'none';
 
-    // Crisp foreground. Order matters: floor line goes behind the baby, parent face
-    // behind the baby, dust behind everything, confetti in front, pain vignette on top.
-    drawFloorContactLine(ctx);
-    drawParentFace(ctx);
+    // Crisp foreground. Order matters: local contact shadows under characters
+    // sit behind them; parent renders behind the baby so a reaching arm can pass
+    // over the baby without covering them; dust sits behind everything; confetti
+    // and the pain vignette go on top.
+    drawParentContactShadow(ctx);
+    drawBabyContactShadow(ctx, sim);
+    drawParentFigure(ctx);
     drawDust(ctx);
     drawFlompPuff(ctx, sim);
     drawBaby(ctx, sim);
@@ -890,17 +1229,6 @@ export function createRenderer(canvas) {
     ellipse(g, s.x - 20 - puffLifeT * 20, s.y - 4 - puffLifeT * 8, 12 + puffLifeT * 10, 6 + puffLifeT * 6); g.fill();
     ellipse(g, s.x + 20 + puffLifeT * 20, s.y - 4 - puffLifeT * 8, 12 + puffLifeT * 10, 6 + puffLifeT * 6); g.fill();
     g.restore();
-  }
-
-  function drawFloorContactLine(g) {
-    /** Softer floor-level line: a very faint darker band right at the world's y=0.
-     *  Kept subtle so it does not cut across the baby, who lies right on top of it. */
-    const y = floorScreenY;
-    const grad = g.createLinearGradient(0, y, 0, y + 24);
-    grad.addColorStop(0, 'rgba(80, 55, 35, 0.18)');
-    grad.addColorStop(1, 'rgba(80, 55, 35, 0)');
-    g.fillStyle = grad;
-    g.fillRect(0, y, width, 24);
   }
 
   return { render, noteEvent, resize };

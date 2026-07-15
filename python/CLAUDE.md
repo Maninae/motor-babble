@@ -26,12 +26,17 @@ Every file has a module docstring; read that first. This is the shape:
 ```
 policy action (8-dim)
   -> ActionScramble.apply (optional per-episode permute + sign flip)
-  -> _apply_muscle_activations: sets rate + max_force on each pymunk.SimpleMotor
+  -> apply_muscle_activations: sets rate + max_force on each pymunk.SimpleMotor
   -> space.step x FRAME_SKIP (60 Hz physics, 15 Hz control)
   -> pymunk on_collision callbacks fire: hand-on-face count, pending pain events
-  -> MilestoneTracker.update reads torso/head snapshot
+  -> per physics tick inside the frame-skip loop: update_rocking_peaks decays and
+     refreshes peak_pos / peak_neg of the wrapped torso angle
+  -> after the loop: if amplitude crosses ROLLOVER_AMPLITUDE_TO_ROLL, flip facing_down
+     (rock-to-roll) and mark rollover_completed_this_step for the snapshot
+  -> MilestoneTracker.update reads torso/head snapshot; lands ROLL_OVER on flip flag,
+     lands TUMMY_TIME on hold(prone + head_lifted)
   -> compute_reward assembles per-task shaping + shared penalties/bonuses
-  -> _compose_observation packs joint angles/velocities + torso/head state
+  -> compose_observation packs joint angles/velocities + torso/head state
 ```
 
 ## Adding a new task
@@ -40,19 +45,27 @@ policy action (8-dim)
 2. Add reward constants (scales, bonuses) in `config.py`.
 3. Extend the dispatch in `rewards.compute_reward`.
 4. If it needs new state (like the rocking peaks), add it to `RewardStateSummary` and to the env's per-step bookkeeping (init in `__init__`, reset in `reset`, update inside the frame-skip loop or after it in `step`).
-5. If it needs new observation dims, update `OBSERVATION_DIM` and `_compose_observation` together.
+5. If it needs new observation dims, update `OBSERVATION_DIM` and `compose_observation` together.
 6. If it needs a task-specific termination, extend the `terminated = ...` expression in `step()`.
 
-## The rollover task: rocking, not flipping
+## Rock-to-roll: how ROLL_OVER and TUMMY_TIME work
 
-An in-plane 180-degree flip is physically impossible for this sagittal-view morphology (it is a somersault, and evolutionary search on the JS side plateaued around 0.8 rad). The `rollover` task instead rewards the honest physical skill: rocking. The env tracks per-physics-step decaying peaks of the wrapped torso angle:
+An in-plane 180-degree flip is physically impossible for this sagittal-view morphology (it is a somersault, and evolutionary search on the JS side plateaued around 0.8 rad). Mirroring `js/sim.js`, the roll is **scripted bookkeeping** on top of a real physical skill:
+
+- The env tracks peaks of the wrapped torso angle every physics tick, in **every task**:
 
 ```
 peak_pos = max(peak_pos * 0.995, wrap_angle(torso.angle))
 peak_neg = min(peak_neg * 0.995, wrap_angle(torso.angle))
 ```
 
-Reward = `SCALE * ((peak_pos - peak_neg) - previous_amplitude)`, so growth pays and decay costs. Amplitude crossing 0.65 rad grants the completion bonus and terminates the episode. In the JS game the actual flip is scripted past this same threshold; the RL task hands off a policy that has learned the physics-side skill. The torso's small round back bulge is what makes this achievable; a flat back on a flat floor cannot rock.
+- Amplitude = `peak_pos - peak_neg`. In the `rollover` task, `SCALE * delta_amplitude` is the shaped reward: growth pays, decay costs.
+- When amplitude first crosses `ROLLOVER_AMPLITUDE_TO_ROLL` (0.65 rad, calibrated from the JS trigger), the env flips `facing_down` from False to True and passes `rollover_completed_this_step=True` in the milestone snapshot. That flag lands the ROLL_OVER milestone.
+- After the flip, `is_prone(torso_angle, facing_down=True)` reports True whenever `|wrap_angle(torso)| < PRONE_ANGLE_TOLERANCE` (0.8 rad): torso lying near flat, not still rocking sideways. Observation dim [22] uses this same definition, so a policy trained on `crawl` also gets a real prone signal after it accidentally rocks past threshold.
+- TUMMY_TIME requires ROLL_OVER + (prone + head lifted) for MILESTONE_HOLD_TUMMY_SEC.
+- The rollover task terminates on the flip and pays REWARD_ROLLOVER_COMPLETE_BONUS. The crawl task grants the ROLL_OVER milestone bonus but does not terminate.
+
+The torso's small round back bulge is what makes rocking achievable; a flat back on a flat floor cannot pump an oscillation.
 
 ## Adding a new muscle
 
@@ -73,7 +86,11 @@ Two modes only, per gymnasium convention: `"human"` opens a real pygame window; 
 - **pymunk 7**: collision handlers use `space.on_collision(a, b, begin=..., post_solve=..., separate=...)`. The pre-7 `add_collision_handler` no longer exists.
 - **pygame-ce, not pygame**: upstream `pygame` 2.6.1 has a circular-import bug on Python 3.14. `pygame-ce` is the community-maintained fork with the fix.
 - **Env checker**: `gymnasium.utils.env_checker.check_env(env.unwrapped, skip_render_check=True)` passes with soft warnings about infinite observation bounds. Those are cosmetic; joint velocities are physically unbounded.
-- **SubprocVecEnv on macOS**: gymnasium 1.x requires `if __name__ == "__main__":` guards for `spawn` start method; `train.py` has one.
+- **SubprocVecEnv workers must register the env id**: `make_env_factory` in `train.py` has an `import motor_babble_rl` INSIDE the closure. It runs when the factory is invoked in the worker process (spawn start method on macOS = fresh Python interpreter, only re-imports the module the factory is defined in). Without it, workers fail with `UnregisteredEnv: MotorBabbleBaby-v0` when they call `gym.make`. This is the one legitimate function-body import in the code and it carries a comment saying so.
+- **Reruns and TensorBoard**: passing an existing `--run-name` to `train.py` aborts by default. Pass `--force` to move the old run dir to Trash (via `/usr/bin/trash`, recoverable). Without this, SB3's TB writer silently accretes `PPO_2`, `PPO_3`, ... event subdirs while `final_model.zip` and `config.json` overwrite in place.
+- **Energy penalty is per-second**: `REWARD_ENERGY_PENALTY` is a per-second-per-unit-sum(a^2) rate. `compute_reward` multiplies by `control_dt_seconds` (FRAME_SKIP * PHYSICS_TIMESTEP). If FRAME_SKIP is retuned the wall-clock energy cost of a policy stays the same.
+- **REACH_PARENT terminal payout is exact**: `REACH_PARENT` is excluded from the generic `+REWARD_MILESTONE_BONUS` sum so the terminal step pays exactly `+REWARD_REACH_PARENT_BONUS`, not that plus another +2.
+- **No leading underscores**: internal methods and helpers are named plainly (`apply_muscle_activations`, `compose_observation`, `make_impulse_pain_handler`, etc.). Python has no real private access; the underscore just made names harder to read.
 
 ## Testing
 

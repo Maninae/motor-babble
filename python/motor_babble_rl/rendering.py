@@ -65,17 +65,19 @@ class BabyRenderer:
             raise ValueError(f"Unsupported render mode: {mode}")
         self.mode = mode
 
-        # In headless/offscreen use, SDL_VIDEODRIVER=dummy avoids opening a real window.
-        # Callers set this env var; we just honor it and pick the right init path.
+        # SDL_VIDEODRIVER must be set BEFORE pygame.init() runs its display probe:
+        # rgb_array mode may be called with no display attached (CI, gif capture), and
+        # letting the default probe fail first taints the whole init. The env var
+        # order was inverted before, so headless callers had to set SDL_VIDEODRIVER
+        # themselves upstream; now the renderer forces it correctly.
+        if mode == "rgb_array":
+            os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
         pygame.init()
         if mode == "human":
             self.surface = pygame.display.set_mode((RENDER_WIDTH_PX, RENDER_HEIGHT_PX))
             pygame.display.set_caption("Motor Babble - RL")
             self.clock = pygame.time.Clock()
         else:
-            # rgb_array: draw into an offscreen Surface that never needs a display.
-            os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-            pygame.display.init()
             self.surface = pygame.Surface((RENDER_WIDTH_PX, RENDER_HEIGHT_PX))
             self.clock = None
 
@@ -108,11 +110,11 @@ class BabyRenderer:
 
     def draw(self, env: "MotorBabbleBabyEnv") -> np.ndarray | None:
         """Render one frame of `env`. Returns the RGB array in rgb_array mode."""
-        self._draw_background()
-        self._draw_nursery()
-        self._draw_parent_zone()
-        self._draw_baby(env)
-        self._draw_hud(env)
+        self.draw_background()
+        self.draw_nursery()
+        self.draw_parent_zone()
+        self.draw_baby(env)
+        self.draw_hud(env)
 
         if self.mode == "human":
             pygame.event.pump()
@@ -125,10 +127,10 @@ class BabyRenderer:
         pixel_array = pygame.surfarray.array3d(self.surface)
         return np.transpose(pixel_array, (1, 0, 2)).astype(np.uint8)
 
-    def _draw_background(self) -> None:
+    def draw_background(self) -> None:
         self.surface.fill(RENDER_PALETTE["wall"])
 
-    def _draw_nursery(self) -> None:
+    def draw_nursery(self) -> None:
         """Floor strip and the crib bar."""
         floor_top = self.world_to_screen(0.0, FLOOR_Y)[1]
         pygame.draw.rect(
@@ -160,7 +162,7 @@ class BabyRenderer:
             right_wall_top, (right_wall_top[0], right_wall_top[1] + wall_height), 2,
         )
 
-    def _draw_parent_zone(self) -> None:
+    def draw_parent_zone(self) -> None:
         """Faint marker for the reach-parent goal line."""
         top_x, top_y = self.world_to_screen(PARENT_ZONE_X, 0.6)
         bottom_x, bottom_y = self.world_to_screen(PARENT_ZONE_X, FLOOR_Y)
@@ -170,7 +172,7 @@ class BabyRenderer:
         label = self.font_small.render("parent", True, RENDER_PALETTE["milestone"])
         self.surface.blit(label, (top_x - label.get_width() // 2, top_y - 20))
 
-    def _draw_baby(self, env: "MotorBabbleBabyEnv") -> None:
+    def draw_baby(self, env: "MotorBabbleBabyEnv") -> None:
         """Render torso, head, arms, legs. Colors distinguish near vs far side."""
         assert env.baby is not None
         baby = env.baby
@@ -179,23 +181,23 @@ class BabyRenderer:
         far_color = RENDER_PALETTE["onesie_shade"]
 
         # Legs first so they render behind arms.
-        self._draw_box_body(baby.leg_far.proximal, LEG_PROX_HW, LEG_PROX_HH, far_color)
-        self._draw_box_body(baby.leg_far.distal, LEG_DIST_HW, LEG_DIST_HH, far_color)
-        self._draw_box_body(baby.leg_near.proximal, LEG_PROX_HW, LEG_PROX_HH, near_color)
-        self._draw_box_body(baby.leg_near.distal, LEG_DIST_HW, LEG_DIST_HH, near_color)
+        self.draw_box_body(baby.leg_far.proximal, LEG_PROX_HW, LEG_PROX_HH, far_color)
+        self.draw_box_body(baby.leg_far.distal, LEG_DIST_HW, LEG_DIST_HH, far_color)
+        self.draw_box_body(baby.leg_near.proximal, LEG_PROX_HW, LEG_PROX_HH, near_color)
+        self.draw_box_body(baby.leg_near.distal, LEG_DIST_HW, LEG_DIST_HH, near_color)
 
         # Torso: the box, plus the small round back bulge that enables rocking.
-        self._draw_box_body(baby.torso, TORSO_HW, TORSO_HH, RENDER_PALETTE["onesie"])
-        self._draw_circle_offset(
+        self.draw_box_body(baby.torso, TORSO_HW, TORSO_HH, RENDER_PALETTE["onesie"])
+        self.draw_circle_offset(
             baby.torso, offset_local=(0.0, TORSO_BUMP_OFFSET_Y),
             radius=TORSO_BUMP_RADIUS, color=RENDER_PALETTE["onesie_shade"],
         )
 
         # Arms
-        self._draw_box_body(baby.arm_far.proximal, ARM_PROX_HW, ARM_PROX_HH, RENDER_PALETTE["skin_shade"])
-        self._draw_box_body(baby.arm_far.distal, ARM_DIST_HW, ARM_DIST_HH, RENDER_PALETTE["skin_shade"])
-        self._draw_box_body(baby.arm_near.proximal, ARM_PROX_HW, ARM_PROX_HH, RENDER_PALETTE["skin"])
-        self._draw_box_body(baby.arm_near.distal, ARM_DIST_HW, ARM_DIST_HH, RENDER_PALETTE["skin"])
+        self.draw_box_body(baby.arm_far.proximal, ARM_PROX_HW, ARM_PROX_HH, RENDER_PALETTE["skin_shade"])
+        self.draw_box_body(baby.arm_far.distal, ARM_DIST_HW, ARM_DIST_HH, RENDER_PALETTE["skin_shade"])
+        self.draw_box_body(baby.arm_near.proximal, ARM_PROX_HW, ARM_PROX_HH, RENDER_PALETTE["skin"])
+        self.draw_box_body(baby.arm_near.distal, ARM_DIST_HW, ARM_DIST_HH, RENDER_PALETTE["skin"])
 
         # Head
         head_center = self.world_to_screen(baby.head.position.x, baby.head.position.y)
@@ -203,7 +205,7 @@ class BabyRenderer:
         pygame.draw.circle(self.surface, RENDER_PALETTE["skin"], head_center, radius_px)
         pygame.draw.circle(self.surface, RENDER_PALETTE["hair"], head_center, radius_px, 2)
 
-    def _draw_box_body(self, body, hw: float, hh: float, color: tuple[int, int, int]) -> None:
+    def draw_box_body(self, body, hw: float, hh: float, color: tuple[int, int, int]) -> None:
         """Draw a rotated box body as a filled polygon."""
         cx, cy = body.position.x, body.position.y
         cos_a = math.cos(body.angle)
@@ -217,7 +219,7 @@ class BabyRenderer:
         pygame.draw.polygon(self.surface, color, world_corners)
         pygame.draw.polygon(self.surface, RENDER_PALETTE["floor_edge"], world_corners, 1)
 
-    def _draw_circle_offset(
+    def draw_circle_offset(
         self, body, offset_local: tuple[float, float], radius: float, color: tuple[int, int, int],
     ) -> None:
         """Draw a filled circle attached to `body` at an offset in its local frame."""
@@ -230,7 +232,7 @@ class BabyRenderer:
         pygame.draw.circle(self.surface, color, center_px, self.scale_length(radius))
         pygame.draw.circle(self.surface, RENDER_PALETTE["floor_edge"], center_px, self.scale_length(radius), 1)
 
-    def _draw_hud(self, env: "MotorBabbleBabyEnv") -> None:
+    def draw_hud(self, env: "MotorBabbleBabyEnv") -> None:
         """Top-left readout: task, time, milestones, scrambled flag, rocking amplitude."""
         lines: list[tuple[str, tuple[int, int, int]]] = []
         lines.append((f"task: {env.task.value}", RENDER_PALETTE["text"]))

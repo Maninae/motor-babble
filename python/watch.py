@@ -16,9 +16,12 @@ import logging
 import os
 from pathlib import Path
 
+import gymnasium as gym
+import imageio.v3 as iio
 import numpy as np
+from stable_baselines3 import PPO
 
-import motor_babble_rl                                     # registers MotorBabbleBaby-v0
+import motor_babble_rl                                    # registers MotorBabbleBaby-v0
 
 _ = motor_babble_rl
 
@@ -65,14 +68,13 @@ def main() -> None:
     args = parse_args()
 
     if args.gif is not None:
-        # Headless capture: no window, offscreen surface only.
+        # Headless capture: no window, offscreen surface only. The renderer also
+        # sets this internally, but we set it here BEFORE gym.make so any indirect
+        # pygame side effects (font, image loaders) also pick up the dummy driver.
         os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
         render_mode = "rgb_array"
     else:
         render_mode = "human"
-
-    import gymnasium as gym
-    from stable_baselines3 import PPO
 
     env = gym.make(
         "MotorBabbleBaby-v0",
@@ -94,7 +96,6 @@ def main() -> None:
         all_frames.extend(frames)
 
     if args.gif is not None and all_frames:
-        import imageio.v3 as iio
         args.gif.parent.mkdir(parents=True, exist_ok=True)
         iio.imwrite(str(args.gif), np.stack(all_frames), fps=args.gif_fps, loop=0)
         logger.info("wrote gif with %d frames -> %s", len(all_frames), args.gif)

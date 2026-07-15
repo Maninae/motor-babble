@@ -7,7 +7,9 @@ pymunk import and no side effects.
 
 Task notes:
 - `crawl`: reward = forward torso displacement per step (integrates to distance
-  traveled). Terminated on reaching the parent zone; large one-time bonus on that.
+  traveled). Terminated on reaching the parent zone; the terminal payout is exactly
+  REWARD_REACH_PARENT_BONUS. REACH_PARENT is deliberately excluded from the generic
+  milestone bonus so the terminal step is not double-counted.
 - `rollover`: the honest physical skill this morphology can produce is rocking, not
   a 180-degree flip (that is a somersault in the sagittal plane, which no baby can do,
   and evolutionary search on the JS side plateaued around 0.8 rad). Reward is the
@@ -16,6 +18,11 @@ Task notes:
   Crossing ROLLOVER_AMPLITUDE_TO_ROLL (0.65 rad, calibrated from the JS game's roll
   trigger) is the completion event: bonus + terminate. In the JS game the actual
   flip is scripted past this threshold; the RL task trains the physical prerequisite.
+
+Energy penalty:
+  Expressed per SECOND per unit sum(a^2). Multiplied by control_dt_seconds here so
+  the per-step magnitude scales cleanly with FRAME_SKIP. If someone retunes
+  FRAME_SKIP, the wall-clock energy cost of a policy stays the same.
 """
 
 from dataclasses import dataclass
@@ -49,6 +56,7 @@ class RewardStateSummary:
     rollover_just_completed: bool            # amplitude crossed threshold this step (fires once)
     pain_event_count: int
     milestones_landed: list[MilestoneId]
+    control_dt_seconds: float                # FRAME_SKIP * PHYSICS_TIMESTEP; scales the energy penalty
 
 
 @dataclass
@@ -60,13 +68,18 @@ class RewardBreakdown:
 
 
 def compute_reward(state: RewardStateSummary) -> RewardBreakdown:
-    """Dispatch to the per-task shaping and add the shared penalties/bonuses."""
+    """Dispatch to the per-task shaping and add the shared penalties/bonuses.
+
+    REACH_PARENT is excluded from the generic milestone bonus: its terminal payout
+    is exactly REWARD_REACH_PARENT_BONUS, not that plus another REWARD_MILESTONE_BONUS
+    on top. Every other landed milestone earns +REWARD_MILESTONE_BONUS.
+    """
     components: dict[str, float] = {}
 
     if state.task == TaskName.CRAWL:
-        components["velocity"] = _crawl_velocity_reward(prev_torso_x=state.prev_torso_x, torso_x=state.torso_x)
+        components["velocity"] = crawl_velocity_reward(prev_torso_x=state.prev_torso_x, torso_x=state.torso_x)
     elif state.task == TaskName.ROLLOVER:
-        components["rock_amplitude"] = _rollover_amplitude_reward(
+        components["rock_amplitude"] = rollover_amplitude_reward(
             rocking_amplitude_rad=state.rocking_amplitude_rad,
             prev_rocking_amplitude_rad=state.prev_rocking_amplitude_rad,
         )
@@ -75,8 +88,13 @@ def compute_reward(state: RewardStateSummary) -> RewardBreakdown:
     else:
         raise ValueError(f"Unknown task: {state.task}")
 
-    components["energy"] = -REWARD_ENERGY_PENALTY * float(np.sum(np.square(state.clipped_policy_action)))
-    components["milestone_bonus"] = REWARD_MILESTONE_BONUS * len(state.milestones_landed)
+    components["energy"] = (
+        -REWARD_ENERGY_PENALTY
+        * float(np.sum(np.square(state.clipped_policy_action)))
+        * state.control_dt_seconds
+    )
+    non_terminal_landed = [m for m in state.milestones_landed if m != MilestoneId.REACH_PARENT]
+    components["milestone_bonus"] = REWARD_MILESTONE_BONUS * len(non_terminal_landed)
     components["pain_penalty"] = -REWARD_PAIN_PENALTY * state.pain_event_count
 
     if MilestoneId.REACH_PARENT in state.milestones_landed:
@@ -86,17 +104,17 @@ def compute_reward(state: RewardStateSummary) -> RewardBreakdown:
     return RewardBreakdown(total=total_reward, components=components)
 
 
-def _crawl_velocity_reward(prev_torso_x: float, torso_x: float) -> float:
-    """Reward per control step = REWARD_VELOCITY_SCALE * delta_x.
+def crawl_velocity_reward(prev_torso_x: float, torso_x: float) -> float:
+    """Per-control-step reward = REWARD_VELOCITY_SCALE * delta_x.
 
-    This is per-step distance shaping. Integrated over an episode it is just the
-    total distance traveled, so a policy that scoots 1 m earns +1.0 regardless of
-    how many steps it took.
+    Per-step distance shaping. Integrated over an episode it is just the total
+    distance traveled, so a policy that scoots 1 m earns +1.0 regardless of how
+    many steps it took.
     """
     return REWARD_VELOCITY_SCALE * (torso_x - prev_torso_x)
 
 
-def _rollover_amplitude_reward(rocking_amplitude_rad: float, prev_rocking_amplitude_rad: float) -> float:
+def rollover_amplitude_reward(rocking_amplitude_rad: float, prev_rocking_amplitude_rad: float) -> float:
     """Reward the growth of rocking amplitude between successive control steps.
 
     Positive when the baby rocks harder than last step, negative when the peaks decay

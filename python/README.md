@@ -6,7 +6,9 @@ A 2D physics baby with 8 muscles, wrapped in Gymnasium, trained with stable-base
 
 A ragdoll baby (torso, head, two arms, two legs) lies supine in a nursery. The parent is at the far right. The RL agent produces an 8-dim continuous action every 66 ms; each dim drives one revolute motor at a target angular velocity, capped by a per-joint torque limit. The ragdoll physics is pymunk 7; the goal in the default `crawl` task is to reach the parent by any wriggling means the policy can invent.
 
-Milestones give discrete bonuses along the way: hand-to-face, roll-over, tummy-time, first scoot, reach-parent. The reward signal is dense (per-step forward-velocity shaping) plus sparse milestone bonuses, minus a small energy penalty and pain penalty for crashing into the crib bar.
+Milestones give discrete bonuses along the way: hand-to-face, roll-over, tummy-time, first scoot, reach-parent. The reward signal is dense (per-step forward-torso-displacement shaping) plus sparse milestone bonuses, minus a small energy penalty (per-second-scaled sum of squared activations) and pain penalty for crashing into the crib bar.
+
+**Rock-to-roll (mirrors the JS game):** a 180-degree sagittal-plane roll is a somersault this morphology cannot do, so ROLL_OVER is scripted. The env tracks a decaying rocking amplitude of the wrapped torso angle in every task. When it crosses 0.65 rad (the JS game's roll trigger), the env flips a `facing` state from up to down and grants the ROLL_OVER milestone. After the flip, the observation's prone flag reads True whenever the torso settles near flat, and TUMMY_TIME becomes reachable when the baby lifts the head from prone.
 
 ## The research knob
 
@@ -69,15 +71,19 @@ obs, reward, terminated, truncated, info = env.step(action)
   - `[19]` torso x-velocity (m/s)
   - `[20]` head height (m)
   - `[21]` hand-on-face contact flag
-  - `[22]` prone flag (torso within tolerance of face-down)
-- **reward** (crawl): per-step forward torso displacement + `+2.0` per new milestone + `+10.0` on reach-parent (terminal) - `5e-4 * sum(a^2)` energy penalty - `1.0` per pain impact.
+  - `[22]` prone flag (True only after the scripted roll flips facing, AND the torso has settled near flat)
+- **reward** (crawl): per-step forward torso displacement + `+2.0` per new milestone (except REACH_PARENT) + `+10.0` on reach-parent (terminal, exact, not stacked with the milestone bonus) - energy penalty `-REWARD_ENERGY_PENALTY * sum(a^2) * control_dt_seconds` (per-second-scaled; magnitude preserved if FRAME_SKIP is retuned) - `1.0` per pain impact.
 - **reward** (rollover): growth of the tracked rocking amplitude `(peak_pos - peak_neg)` of the wrapped torso angle, where the peaks decay 0.5% per physics tick (~1.2 s memory). `+10.0` completion bonus when amplitude first crosses `0.65 rad`, then terminate. Same energy + pain + milestone terms as crawl.
-- **terminated**: `reach-parent` (crawl) or rocking amplitude >= 0.65 rad (rollover).
+- **terminated**: `reach-parent` (crawl) or rocking amplitude >= 0.65 rad (rollover, flips `facing_down` in the info dict).
 - **truncated**: 450 control steps (30 s at 15 Hz).
 
-**Why rollover rewards rocking, not flipping**: a 180-degree in-plane roll from supine to prone is a somersault, physically impossible for this sagittal-view morphology (evolutionary search on the JS side plateaued around 0.8 rad). The task therefore trains the honest physical prerequisite: rocking hard enough that a real flip would follow. In the JS game the actual flip is scripted past this same threshold; the Python RL task stops at threshold and hands the trainer a policy that has learned the physics-side skill.
+**Why rollover rewards rocking, not flipping**: a 180-degree in-plane roll from supine to prone is a somersault, physically impossible for this sagittal-view morphology (evolutionary search on the JS side plateaued around 0.8 rad). The task therefore trains the honest physical prerequisite: rocking hard enough that a real flip would follow. In the JS game the actual flip is scripted past this same threshold; the Python RL task stops at threshold and hands the trainer a policy that has learned the physics-side skill. In the crawl task the same threshold-crossing grants the ROLL_OVER milestone but does not terminate.
 
 The torso includes a small round back bulge (radius 0.065 m at local offset (0, -0.005)) that enables rocking; without it the flat back cannot pump an oscillation on a flat floor.
+
+## Rerunning training
+
+Passing an existing `--run-name` aborts by default (SB3's TensorBoard writer would silently create `PPO_2`, `PPO_3`, ... subdirs while other artifacts overwrite in place, producing a mixed-generation directory). Pass `--force` to move the old run to Trash via `/usr/bin/trash` (recoverable) and start over cleanly.
 
 ## Honest note on parity with the JS game
 

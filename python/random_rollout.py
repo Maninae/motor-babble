@@ -15,6 +15,8 @@ import logging
 import os
 from pathlib import Path
 
+import gymnasium as gym
+import imageio.v3 as iio
 import numpy as np
 
 import motor_babble_rl                                    # registers MotorBabbleBaby-v0
@@ -51,8 +53,6 @@ def main() -> None:
     else:
         render_mode = "human"
 
-    import gymnasium as gym
-
     env = gym.make(
         "MotorBabbleBaby-v0",
         task=args.task,
@@ -69,18 +69,19 @@ def main() -> None:
     frames: list[np.ndarray] = []
     total_reward = 0.0
     saved_frame_paths: list[Path] = []
+    steps_executed = 0                                     # initialized so --steps 0 does not crash the summary log
 
     for step_index in range(args.steps):
         action = rng.uniform(-1.0, 1.0, size=env.action_space.shape).astype(np.float32)
         observation, reward, terminated, truncated, info = env.step(action)
         total_reward += float(reward)
+        steps_executed = step_index + 1
         frame = env.render()
         if frame is not None:
             frames.append(frame)
             if args.frames_dir is not None and step_index % args.frame_stride == 0:
                 args.frames_dir.mkdir(parents=True, exist_ok=True)
                 png_path = args.frames_dir / f"frame_{step_index:04d}.png"
-                import imageio.v3 as iio
                 iio.imwrite(str(png_path), frame)
                 saved_frame_paths.append(png_path)
                 logger.info("saved %s (torso_x = %.3f, reward = %.3f)",
@@ -89,10 +90,9 @@ def main() -> None:
             break
 
     logger.info("rollout done: steps = %d, total reward = %.2f, milestones = %s",
-                step_index + 1, total_reward, info["milestones_achieved"])
+                steps_executed, total_reward, info["milestones_achieved"])
 
     if args.gif is not None and frames:
-        import imageio.v3 as iio
         args.gif.parent.mkdir(parents=True, exist_ok=True)
         iio.imwrite(str(args.gif), np.stack(frames), fps=15, loop=0)
         logger.info("wrote gif with %d frames -> %s", len(frames), args.gif)

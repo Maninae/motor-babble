@@ -7,6 +7,15 @@ shaped by the selected task, and terminated/truncated flags.
 The environment owns the physics `Space`, the ragdoll `Baby`, the static `Nursery`,
 the `MilestoneTracker`, and the optional `ActionScramble`. Rendering is delegated
 to `motor_babble_rl.rendering`, which reads pymunk body positions on demand.
+
+Rock-to-roll (mirrors js/sim.js):
+  An in-plane 180-degree roll is a somersault this morphology cannot do, so the
+  env tracks a decaying rocking amplitude of the wrapped torso angle in EVERY task.
+  When it crosses `ROLLOVER_AMPLITUDE_TO_ROLL`, the env flips `facing` from 'up'
+  to 'down' and grants the `ROLL_OVER` milestone. After the flip, `is_prone` reads
+  True whenever the torso is roughly flat, so `TUMMY_TIME` becomes reachable when
+  the baby then lifts the head. The rollover task also terminates on this flip;
+  the crawl task just accumulates the ROLL_OVER milestone bonus and keeps going.
 """
 
 import math
@@ -16,6 +25,7 @@ import gymnasium as gym
 import numpy as np
 import pymunk
 from gymnasium import spaces
+from gymnasium.envs.registration import register, registry
 
 from motor_babble_rl.config import (
     ACTIVATION_DEAD_ZONE,
@@ -32,6 +42,7 @@ from motor_babble_rl.config import (
     PAIN_GRACE_PERIOD_SEC,
     PAIN_HEAD_FLOOR_IMPULSE,
     PHYSICS_TIMESTEP,
+    ROLLOVER_AMPLITUDE_TO_ROLL,
     ROLLOVER_PEAK_DECAY_PER_PHYSICS_STEP,
     TONE_TORQUE,
     TORQUE_CAP_BY_GROUP,
@@ -41,24 +52,29 @@ from motor_babble_rl.config import (
     TaskName,
 )
 from motor_babble_rl.milestones import MilestoneSnapshot, MilestoneTracker, is_prone, wrap_angle
-from motor_babble_rl.rewards import RewardStateSummary, compute_reward, rollover_success
 from motor_babble_rl.morphology import Baby, PartCollisionType, build_baby
 from motor_babble_rl.nursery import Nursery, NurseryCollisionTypes, build_nursery
+from motor_babble_rl.rendering import BabyRenderer
+from motor_babble_rl.rewards import RewardStateSummary, compute_reward
 from motor_babble_rl.wiring import ActionScramble, identity_scramble, random_scramble
 
 
-OBSERVATION_DIM: int = 23   # see `_compose_observation` for the layout
+OBSERVATION_DIM: int = 23   # see `compose_observation` for the layout
+CONTROL_DT_SECONDS: float = FRAME_SKIP * PHYSICS_TIMESTEP
 
 
 class MotorBabbleBabyEnv(gym.Env):
     """Gymnasium env: 8 muscle activations in, 23-dim body state out, milestone-shaped reward.
 
     Kwargs:
-        task: 'crawl' (default, reward = torso x-displacement per step) or 'rollover'
-            (reward = growth of tracked rocking amplitude; success = amplitude crosses
-            0.65 rad, which is the JS game's roll trigger). An in-plane 180-degree flip
-            is a somersault this morphology cannot do, so 'rollover' trains the honest
-            physical skill: rocking. The JS game scripts the actual flip past threshold.
+        task: 'crawl' (default, reward = torso x-displacement per step; terminates on
+            reach-parent) or 'rollover' (reward = growth of tracked rocking amplitude;
+            terminates when amplitude crosses 0.65 rad, which is the JS game's roll
+            trigger). An in-plane 180-degree flip is a somersault this morphology
+            cannot do, so 'rollover' trains the honest physical skill: rocking. In
+            both tasks the env's rock-to-roll bookkeeping flips a `facing` state and
+            grants the ROLL_OVER milestone once the threshold is reached; only the
+            rollover task terminates on that event.
         scrambled_wiring: if True, a per-episode random permutation + sign flip is applied
             to actions before they reach the motors. This is the domain-randomization
             handle that turns the sandbox into a research question: can a policy learn to
@@ -74,7 +90,7 @@ class MotorBabbleBabyEnv(gym.Env):
         [19]    torso x-velocity (m/s), unscaled
         [20]    head height (m)
         [21]    hand-on-face contact flag (0 or 1)
-        [22]    prone flag (0 or 1, derived from torso angle)
+        [22]    prone flag (facing_down AND |wrap(torso angle)| < PRONE_ANGLE_TOLERANCE)
     """
 
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 60}
@@ -109,15 +125,15 @@ class MotorBabbleBabyEnv(gym.Env):
         self.hand_head_contact_count: int = 0
         self.pending_pain_events: list[str] = []       # 'crib' or 'head_floor', per pain post-solve
 
-        # Rocking-amplitude tracking for the rollover task. Peaks decay per physics
-        # step, so the tracker forgets old excursions and only recent rocking counts.
+        # Rock-to-roll bookkeeping. Peaks decay per physics tick; facing flips on
+        # amplitude crossing, granting ROLL_OVER and enabling prone/TUMMY_TIME.
         self.peak_pos_torso_angle_rad: float = 0.0
         self.peak_neg_torso_angle_rad: float = 0.0
         self.prev_rocking_amplitude_rad: float = 0.0
-        self.rollover_completed: bool = False          # latched once amplitude crosses threshold
+        self.facing_down: bool = False                 # False = supine (spawn), True = post-roll
 
         # Renderer is created lazily on first render() call.
-        self._renderer: Any | None = None
+        self.renderer: BabyRenderer | None = None
 
     # ---------------------------------------------------------------------
     # Gym API
@@ -139,7 +155,7 @@ class MotorBabbleBabyEnv(gym.Env):
             crib=int(PartCollisionType.CRIB),
         ))
         self.baby = build_baby(self.space)
-        self._install_collision_handlers()
+        self.install_collision_handlers()
 
         self.milestones.reset()
         self.control_step = 0
@@ -150,7 +166,7 @@ class MotorBabbleBabyEnv(gym.Env):
         self.peak_pos_torso_angle_rad = 0.0
         self.peak_neg_torso_angle_rad = 0.0
         self.prev_rocking_amplitude_rad = 0.0
-        self.rollover_completed = False
+        self.facing_down = False
 
         if self.scrambled_wiring:
             # np_random is seeded by super().reset(seed=), so this is deterministic per seed.
@@ -158,40 +174,43 @@ class MotorBabbleBabyEnv(gym.Env):
         else:
             self.action_scramble = identity_scramble()
 
-        observation = self._compose_observation()
-        info = self._compose_info(reward_components={}, milestones_landed=[])
+        observation = self.compose_observation()
+        info = self.compose_info(reward_components={}, milestones_landed=[])
         return observation, info
 
     def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         """Advance one control step (4 physics ticks) with the given 8-muscle activation."""
         if self.space is None or self.baby is None:
-            raise RuntimeError("step() called before reset() -- gym contract violation")
+            raise RuntimeError("step() called before reset(); gym contract violation")
 
         clipped_policy_action = np.clip(action, -1.0, 1.0).astype(np.float32)
         body_action = self.action_scramble.apply(clipped_policy_action)
 
         prev_torso_x = self.baby.torso.position.x
-        self._apply_muscle_activations(body_action)
+        self.apply_muscle_activations(body_action)
 
-        self.pending_pain_events.clear()
+        # pending_pain_events is drained at the end of the previous step; no clear needed here.
         for _ in range(FRAME_SKIP):
             self.space.step(PHYSICS_TIMESTEP)
             self.sim_time_seconds += PHYSICS_TIMESTEP
             self.pain_cooldown_seconds = max(0.0, self.pain_cooldown_seconds - PHYSICS_TIMESTEP)
-            self._update_rocking_peaks(torso_angle=float(self.baby.torso.angle))
+            self.update_rocking_peaks(torso_angle=float(self.baby.torso.angle))
 
-        pain_events_this_step = self._drain_pain_events()
-        milestones_landed = self._advance_milestones(dt_seconds=FRAME_SKIP * PHYSICS_TIMESTEP)
-        self.control_step += 1
+        pain_events_this_step = self.drain_pain_events()
 
+        # Rock-to-roll: cross the amplitude threshold, flip facing, grant ROLL_OVER
+        # milestone via the snapshot. This runs in every task; only the rollover task
+        # terminates on it.
         current_amplitude = self.peak_pos_torso_angle_rad - self.peak_neg_torso_angle_rad
-        rollover_just_completed = (
-            self.task == TaskName.ROLLOVER
-            and not self.rollover_completed
-            and rollover_success(current_amplitude)
-        )
+        rollover_just_completed = (not self.facing_down) and current_amplitude >= ROLLOVER_AMPLITUDE_TO_ROLL
         if rollover_just_completed:
-            self.rollover_completed = True
+            self.facing_down = True
+
+        milestones_landed = self.advance_milestones(
+            dt_seconds=CONTROL_DT_SECONDS,
+            rollover_completed_this_step=rollover_just_completed,
+        )
+        self.control_step += 1
 
         reward_summary = RewardStateSummary(
             task=self.task,
@@ -203,45 +222,46 @@ class MotorBabbleBabyEnv(gym.Env):
             rollover_just_completed=rollover_just_completed,
             pain_event_count=len(pain_events_this_step),
             milestones_landed=milestones_landed,
+            control_dt_seconds=CONTROL_DT_SECONDS,
         )
         breakdown = compute_reward(reward_summary)
         self.prev_rocking_amplitude_rad = current_amplitude
 
         terminated = (
             MilestoneId.REACH_PARENT in self.milestones.achieved
-            or (self.task == TaskName.ROLLOVER and self.rollover_completed)
+            or (self.task == TaskName.ROLLOVER and self.facing_down)
         )
         truncated = self.control_step >= MAX_CONTROL_STEPS
 
-        observation = self._compose_observation()
-        info = self._compose_info(reward_components=breakdown.components, milestones_landed=milestones_landed)
+        observation = self.compose_observation()
+        info = self.compose_info(reward_components=breakdown.components, milestones_landed=milestones_landed)
         return observation, float(breakdown.total), terminated, truncated, info
 
     def render(self) -> np.ndarray | None:
         """Dispatch to the lazy renderer. Returns None (human mode) or an HxWx3 uint8 array."""
         if self.render_mode is None:
             return None
-        if self._renderer is None:
-            from motor_babble_rl.rendering import BabyRenderer      # deferred to avoid pygame at import
-            self._renderer = BabyRenderer(mode=self.render_mode)
-        return self._renderer.draw(env=self)
+        if self.renderer is None:
+            self.renderer = BabyRenderer(mode=self.render_mode)
+        return self.renderer.draw(env=self)
 
     def close(self) -> None:
         """Release the pygame renderer if one was created."""
-        if self._renderer is not None:
-            self._renderer.close()
-            self._renderer = None
+        if self.renderer is not None:
+            self.renderer.close()
+            self.renderer = None
 
     # ---------------------------------------------------------------------
     # Physics helpers
     # ---------------------------------------------------------------------
 
-    def _apply_muscle_activations(self, body_action: np.ndarray) -> None:
+    def apply_muscle_activations(self, body_action: np.ndarray) -> None:
         """Write speed + torque cap onto every muscle motor from the (scrambled) action.
 
         Below the dead zone the motor holds rest tone; above it, rate is proportional
-        to the activation and torque scales with |activation| so light commands feel
-        soft. This matches the JS applyMuscleActivations.
+        to the activation and torque is `max(TONE_TORQUE, cap * |a|)` so small
+        activations get at least tone-level backing instead of falling off a cliff
+        (activation 0.021 used to command only TORQUE_CAP * 0.021, well below tone).
         """
         assert self.baby is not None
         for index in MuscleIndex:
@@ -254,9 +274,9 @@ class MotorBabbleBabyEnv(gym.Env):
             flex_sign = FLEX_SIGN_BY_MUSCLE[index]
             group: JointGroup = GROUP_BY_MUSCLE[index]
             motor.rate = activation * flex_sign * MOTOR_MAX_RATE
-            motor.max_force = TORQUE_CAP_BY_GROUP[group] * abs(activation)
+            motor.max_force = max(TONE_TORQUE, TORQUE_CAP_BY_GROUP[group] * abs(activation))
 
-    def _update_rocking_peaks(self, torso_angle: float) -> None:
+    def update_rocking_peaks(self, torso_angle: float) -> None:
         """Decay the tracked peaks and pull in the current wrapped torso angle.
 
         Called once per physics tick inside the frame-skip loop, so the decay factor
@@ -272,7 +292,7 @@ class MotorBabbleBabyEnv(gym.Env):
             self.peak_neg_torso_angle_rad * ROLLOVER_PEAK_DECAY_PER_PHYSICS_STEP, wrapped,
         )
 
-    def _drain_pain_events(self) -> list[str]:
+    def drain_pain_events(self) -> list[str]:
         """Consume queued pain-tagged post-solve events into the cooldown-gated set.
 
         The first `PAIN_GRACE_PERIOD_SEC` are the spawn-drop and do not count.
@@ -290,7 +310,7 @@ class MotorBabbleBabyEnv(gym.Env):
         self.pending_pain_events.clear()
         return emitted
 
-    def _advance_milestones(self, dt_seconds: float) -> list[MilestoneId]:
+    def advance_milestones(self, dt_seconds: float, rollover_completed_this_step: bool) -> list[MilestoneId]:
         """Read torso/head state, update the milestone tracker, return newly landed ids."""
         assert self.baby is not None
         torso = self.baby.torso
@@ -300,6 +320,8 @@ class MotorBabbleBabyEnv(gym.Env):
             torso_y=torso.position.y,
             head_y=self.baby.head.position.y,
             hand_on_face=self.hand_head_contact_count > 0,
+            facing_down=self.facing_down,
+            rollover_completed_this_step=rollover_completed_this_step,
         )
         return self.milestones.update(dt_seconds=dt_seconds, snapshot=snapshot)
 
@@ -307,7 +329,7 @@ class MotorBabbleBabyEnv(gym.Env):
     # Observation composition
     # ---------------------------------------------------------------------
 
-    def _compose_observation(self) -> np.ndarray:
+    def compose_observation(self) -> np.ndarray:
         assert self.baby is not None
         obs = np.zeros(OBSERVATION_DIM, dtype=np.float32)
 
@@ -329,10 +351,10 @@ class MotorBabbleBabyEnv(gym.Env):
         obs[19] = torso.velocity.x
         obs[20] = self.baby.head.position.y
         obs[21] = 1.0 if self.hand_head_contact_count > 0 else 0.0
-        obs[22] = 1.0 if is_prone(torso.angle) else 0.0
+        obs[22] = 1.0 if is_prone(torso.angle, self.facing_down) else 0.0
         return obs
 
-    def _compose_info(
+    def compose_info(
         self,
         reward_components: dict[str, float],
         milestones_landed: list[MilestoneId],
@@ -351,7 +373,7 @@ class MotorBabbleBabyEnv(gym.Env):
             "rocking_amplitude_rad": rocking_amplitude,
             "peak_pos_torso_angle_rad": self.peak_pos_torso_angle_rad,
             "peak_neg_torso_angle_rad": self.peak_neg_torso_angle_rad,
-            "rollover_completed": self.rollover_completed,
+            "facing_down": self.facing_down,
             "scramble_permutation": self.action_scramble.permutation.tolist(),
             "scramble_signs": self.action_scramble.sign_flip.tolist(),
         }
@@ -360,7 +382,7 @@ class MotorBabbleBabyEnv(gym.Env):
     # Collision handlers
     # ---------------------------------------------------------------------
 
-    def _install_collision_handlers(self) -> None:
+    def install_collision_handlers(self) -> None:
         """Wire pymunk callbacks for hand-on-face contacts and pain-tagged impacts.
 
         pymunk 7's `Space.on_collision(a, b, begin=..., post_solve=..., separate=...)`
@@ -372,28 +394,28 @@ class MotorBabbleBabyEnv(gym.Env):
         env_self = self
 
         # Hand-on-face contact: increment on begin, decrement on separate.
-        def _hand_head_begin(arbiter: pymunk.Arbiter, s: pymunk.Space, data: object) -> None:
+        def hand_head_begin(arbiter: pymunk.Arbiter, s: pymunk.Space, data: object) -> None:
             env_self.hand_head_contact_count += 1
 
-        def _hand_head_separate(arbiter: pymunk.Arbiter, s: pymunk.Space, data: object) -> None:
+        def hand_head_separate(arbiter: pymunk.Arbiter, s: pymunk.Space, data: object) -> None:
             env_self.hand_head_contact_count = max(0, env_self.hand_head_contact_count - 1)
 
         space.on_collision(
             int(PartCollisionType.HAND), int(PartCollisionType.HEAD),
-            begin=_hand_head_begin, separate=_hand_head_separate,
+            begin=hand_head_begin, separate=hand_head_separate,
         )
 
         # Pain: crib bar hit above threshold impulse, for every baby-side collision type.
-        crib_post_solve = _make_impulse_pain_handler(env_self, threshold=PAIN_CRIB_IMPULSE, tag="crib")
+        crib_post_solve = make_impulse_pain_handler(env_self, threshold=PAIN_CRIB_IMPULSE, tag="crib")
         for baby_side in (PartCollisionType.TORSO, PartCollisionType.HEAD, PartCollisionType.LIMB, PartCollisionType.HAND):
             space.on_collision(int(baby_side), int(PartCollisionType.CRIB), post_solve=crib_post_solve)
 
         # Pain: head hard-hitting the floor.
-        head_floor_post_solve = _make_impulse_pain_handler(env_self, threshold=PAIN_HEAD_FLOOR_IMPULSE, tag="head_floor")
+        head_floor_post_solve = make_impulse_pain_handler(env_self, threshold=PAIN_HEAD_FLOOR_IMPULSE, tag="head_floor")
         space.on_collision(int(PartCollisionType.HEAD), int(PartCollisionType.FLOOR), post_solve=head_floor_post_solve)
 
 
-def _make_impulse_pain_handler(
+def make_impulse_pain_handler(
     env_self: "MotorBabbleBabyEnv",
     threshold: float,
     tag: str,
@@ -411,7 +433,6 @@ def _make_impulse_pain_handler(
 
 def register_env() -> None:
     """Register MotorBabbleBaby-v0 with gymnasium's global registry (idempotent)."""
-    from gymnasium.envs.registration import register, registry
     if "MotorBabbleBaby-v0" in registry:
         return
     register(

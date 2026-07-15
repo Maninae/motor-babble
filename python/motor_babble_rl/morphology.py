@@ -130,7 +130,7 @@ class Baby:
 # ---------------------------------------------------------------------------
 
 
-def _build_torso_body_with_bump() -> pymunk.Body:
+def build_torso_body_with_bump() -> pymunk.Body:
     """Torso body: the box + the round back bulge share one Body, so their masses combine.
 
     Mass and moment must be computed for the composite here, before either fixture is
@@ -151,11 +151,11 @@ def _build_torso_body_with_bump() -> pymunk.Body:
 
     body = pymunk.Body(mass=box_mass + bump_mass, moment=box_moment + bump_moment, body_type=pymunk.Body.DYNAMIC)
     body.position = (SPAWN_X, SPAWN_Y)
-    body.velocity_func = _damped_velocity_update
+    body.velocity_func = damped_velocity_update
     return body
 
 
-def _make_box_body(hw: float, hh: float, position: tuple[float, float]) -> pymunk.Body:
+def make_box_body(hw: float, hh: float, position: tuple[float, float]) -> pymunk.Body:
     """Dynamic body sized as a 2D box (2*hw wide, 2*hh tall) with flesh density.
 
     Mass and moment come from the density * area rule so the ragdoll totals ~5 kg.
@@ -167,22 +167,22 @@ def _make_box_body(hw: float, hh: float, position: tuple[float, float]) -> pymun
     moment = pymunk.moment_for_box(mass, (2.0 * hw, 2.0 * hh))
     body = pymunk.Body(mass=mass, moment=moment, body_type=pymunk.Body.DYNAMIC)
     body.position = position
-    body.velocity_func = _damped_velocity_update
+    body.velocity_func = damped_velocity_update
     return body
 
 
-def _make_circle_body(radius: float, position: tuple[float, float]) -> pymunk.Body:
+def make_circle_body(radius: float, position: tuple[float, float]) -> pymunk.Body:
     """Dynamic circle body for the head. Same density rule as box parts."""
     area = 3.14159265 * radius * radius
     mass = FLESH_DENSITY * area
     moment = pymunk.moment_for_circle(mass, 0.0, radius)
     body = pymunk.Body(mass=mass, moment=moment, body_type=pymunk.Body.DYNAMIC)
     body.position = position
-    body.velocity_func = _damped_velocity_update
+    body.velocity_func = damped_velocity_update
     return body
 
 
-def _damped_velocity_update(body: pymunk.Body, gravity: tuple[float, float], damping: float, dt: float) -> None:
+def damped_velocity_update(body: pymunk.Body, gravity: tuple[float, float], damping: float, dt: float) -> None:
     """Custom velocity integrator so every limb feels a small viscous drag.
 
     We call the default integrator with a scaled damping factor rather than fight
@@ -194,7 +194,7 @@ def _damped_velocity_update(body: pymunk.Body, gravity: tuple[float, float], dam
     body.angular_velocity *= 1.0 - ANGULAR_DAMPING * dt
 
 
-def _apply_flesh_filter(shape: pymunk.Shape, categories: int, mask: int, collision_type: PartCollisionType) -> None:
+def apply_flesh_filter(shape: pymunk.Shape, categories: int, mask: int, collision_type: PartCollisionType) -> None:
     """Attach filter bits, collision type, and standard flesh material to a shape."""
     shape.density = FLESH_DENSITY
     shape.friction = FLESH_FRICTION
@@ -203,7 +203,7 @@ def _apply_flesh_filter(shape: pymunk.Shape, categories: int, mask: int, collisi
     shape.collision_type = int(collision_type)
 
 
-def _build_limb_chain(
+def build_limb_chain(
     space: pymunk.Space,
     torso: pymunk.Body,
     anchor_world: tuple[float, float],
@@ -226,15 +226,15 @@ def _build_limb_chain(
     """
     ax, ay = anchor_world
     proximal_center = (ax - proximal_hw, ay)
-    prox_body = _make_box_body(proximal_hw, proximal_hh, proximal_center)
+    prox_body = make_box_body(proximal_hw, proximal_hh, proximal_center)
     prox_shape = pymunk.Poly.create_box(prox_body, (2.0 * proximal_hw, 2.0 * proximal_hh))
-    _apply_flesh_filter(prox_shape, int(CollisionCategory.BODY), BODY_MASK, PartCollisionType.LIMB)
+    apply_flesh_filter(prox_shape, int(CollisionCategory.BODY), BODY_MASK, PartCollisionType.LIMB)
 
     distal_anchor = (ax - 2.0 * proximal_hw, ay)
     distal_center = (distal_anchor[0] - distal_hw, ay)
-    dist_body = _make_box_body(distal_hw, distal_hh, distal_center)
+    dist_body = make_box_body(distal_hw, distal_hh, distal_center)
     dist_shape = pymunk.Poly.create_box(dist_body, (2.0 * distal_hw, 2.0 * distal_hh))
-    _apply_flesh_filter(dist_shape, distal_categories, distal_mask, distal_collision_type)
+    apply_flesh_filter(dist_shape, distal_categories, distal_mask, distal_collision_type)
 
     space.add(prox_body, prox_shape, dist_body, dist_shape)
 
@@ -277,19 +277,19 @@ def build_baby(space: pymunk.Space) -> Baby:
     dicts indexed by `MuscleIndex`, which is the only thing higher layers need to
     apply an 8-dim action or read an observation.
     """
-    torso = _build_torso_body_with_bump()
+    torso = build_torso_body_with_bump()
     torso_shape = pymunk.Poly.create_box(torso, (2.0 * TORSO_HW, 2.0 * TORSO_HH))
-    _apply_flesh_filter(torso_shape, int(CollisionCategory.BODY), BODY_MASK, PartCollisionType.TORSO)
+    apply_flesh_filter(torso_shape, int(CollisionCategory.BODY), BODY_MASK, PartCollisionType.TORSO)
     # Round back bulge: a second fixture on the same body so the torso rocks on it
     # instead of lying flat. Local -y is the back when the baby is supine.
     torso_bump = pymunk.Circle(torso, TORSO_BUMP_RADIUS, offset=(0.0, TORSO_BUMP_OFFSET_Y))
-    _apply_flesh_filter(torso_bump, int(CollisionCategory.BODY), BODY_MASK, PartCollisionType.TORSO)
+    apply_flesh_filter(torso_bump, int(CollisionCategory.BODY), BODY_MASK, PartCollisionType.TORSO)
     space.add(torso, torso_shape, torso_bump)
 
     head_position = (SPAWN_X + HEAD_OFFSET_X, SPAWN_Y)
-    head = _make_circle_body(HEAD_RADIUS, head_position)
+    head = make_circle_body(HEAD_RADIUS, head_position)
     head_shape = pymunk.Circle(head, HEAD_RADIUS)
-    _apply_flesh_filter(head_shape, int(CollisionCategory.HEAD), HEAD_MASK, PartCollisionType.HEAD)
+    apply_flesh_filter(head_shape, int(CollisionCategory.HEAD), HEAD_MASK, PartCollisionType.HEAD)
     space.add(head, head_shape)
 
     neck_anchor_world = (SPAWN_X + NECK_ANCHOR_OFFSET_X, SPAWN_Y)
@@ -300,7 +300,7 @@ def build_baby(space: pymunk.Space) -> Baby:
     space.add(neck_pivot, neck_limit, neck_motor)
 
     # Near-side arm (upper: BODY category; forearm: HAND category, may hit head)
-    arm_near = _build_limb_chain(
+    arm_near = build_limb_chain(
         space, torso,
         anchor_world=(SPAWN_X + SHOULDER_LOCAL_X, SPAWN_Y + NEAR_SIDE_Y),
         proximal_hw=ARM_PROX_HW, proximal_hh=ARM_PROX_HH,
@@ -309,7 +309,7 @@ def build_baby(space: pymunk.Space) -> Baby:
         distal_categories=int(CollisionCategory.HAND), distal_mask=HAND_MASK,
         distal_collision_type=PartCollisionType.HAND,
     )
-    arm_far = _build_limb_chain(
+    arm_far = build_limb_chain(
         space, torso,
         anchor_world=(SPAWN_X + SHOULDER_LOCAL_X, SPAWN_Y + FAR_SIDE_Y),
         proximal_hw=ARM_PROX_HW, proximal_hh=ARM_PROX_HH,
@@ -320,7 +320,7 @@ def build_baby(space: pymunk.Space) -> Baby:
     )
 
     # Legs (upper + lower are both BODY; feet do not need to hit head)
-    leg_near = _build_limb_chain(
+    leg_near = build_limb_chain(
         space, torso,
         anchor_world=(SPAWN_X + HIP_LOCAL_X, SPAWN_Y + NEAR_SIDE_Y),
         proximal_hw=LEG_PROX_HW, proximal_hh=LEG_PROX_HH,
@@ -329,7 +329,7 @@ def build_baby(space: pymunk.Space) -> Baby:
         distal_categories=int(CollisionCategory.BODY), distal_mask=BODY_MASK,
         distal_collision_type=PartCollisionType.LIMB,
     )
-    leg_far = _build_limb_chain(
+    leg_far = build_limb_chain(
         space, torso,
         anchor_world=(SPAWN_X + HIP_LOCAL_X, SPAWN_Y + FAR_SIDE_Y),
         proximal_hw=LEG_PROX_HW, proximal_hh=LEG_PROX_HH,

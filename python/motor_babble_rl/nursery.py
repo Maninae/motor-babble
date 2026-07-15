@@ -44,17 +44,17 @@ def build_nursery(space: pymunk.Space, part_types: "NurseryCollisionTypes") -> N
     """
     floor_span_half = (RIGHT_WALL_X - LEFT_WALL_X) / 2.0 + 0.5
     floor_center_x = (RIGHT_WALL_X + LEFT_WALL_X) / 2.0
-    floor = _add_static_box(
+    floor = add_static_box(
         space, floor_center_x, FLOOR_Y - 0.1,
         floor_span_half, 0.1, FLOOR_FRICTION, part_types.floor,
     )
-    left_wall = _add_static_box(
+    left_wall = add_static_box(
         space, LEFT_WALL_X - 0.05, 0.6, 0.05, 0.8, WALL_FRICTION, part_types.wall,
     )
-    right_wall = _add_static_box(
+    right_wall = add_static_box(
         space, RIGHT_WALL_X + 0.05, 0.6, 0.05, 0.8, WALL_FRICTION, part_types.wall,
     )
-    crib_bar = _add_static_box(
+    crib_bar = add_static_box(
         space, CRIB_BAR_X, CRIB_BAR_HALF_HEIGHT,
         CRIB_BAR_HALF_WIDTH, CRIB_BAR_HALF_HEIGHT,
         CRIB_FRICTION, part_types.crib,
@@ -71,7 +71,7 @@ class NurseryCollisionTypes:
     crib: int
 
 
-def _add_static_box(
+def add_static_box(
     space: pymunk.Space,
     center_x: float, center_y: float,
     hw: float, hh: float,

@@ -231,18 +231,26 @@ MILESTONE_ORDER: tuple[MilestoneId, ...] = (
 )
 
 MILESTONE_HOLD_HAND_TO_FACE_SEC: float = 0.4
-MILESTONE_HOLD_ROLL_SEC: float = 0.5
 MILESTONE_HOLD_TUMMY_SEC: float = 1.5
 MILESTONE_TUMMY_HEAD_LIFT: float = 0.10     # head above torso center to count as tummy time
 MILESTONE_SCOOT_DISTANCE: float = 0.55
-PRONE_ANGLE_TOLERANCE: float = 0.7          # radians from face-down still counts as prone
+# After the scripted roll (`facing == 'down'`), prone means the torso has settled back
+# near flat (|wrap_angle(torso)| < 0.8), so the baby is prone-and-still rather than
+# still rocking sideways. Threshold widened from the pre-roll 0.7 because rock-to-roll
+# now handles the flip, not a physically-impossible somersault detection.
+PRONE_ANGLE_TOLERANCE: float = 0.8
 
-# Reward shape (crawl task)
-REWARD_VELOCITY_SCALE: float = 1.0          # coefficient on torso x-velocity (m/s -> reward)
-REWARD_MILESTONE_BONUS: float = 2.0         # one-time bonus per newly reached milestone
-REWARD_ENERGY_PENALTY: float = 5e-4         # multiplier on sum(a^2)
+# Reward shape (crawl task).
+REWARD_VELOCITY_SCALE: float = 1.0          # coefficient on per-step torso x-displacement (m -> reward)
+REWARD_MILESTONE_BONUS: float = 2.0         # one-time bonus per newly reached milestone (except REACH_PARENT)
+# Energy penalty is expressed per SECOND per unit sum(a^2), and multiplied by the
+# control step's wall time inside compute_reward. So the per-step magnitude scales
+# with FRAME_SKIP * PHYSICS_TIMESTEP and stays consistent if either is retuned.
+# At FRAME_SKIP=4 (control_dt ~ 0.0667 s) the per-step magnitude is 7.5e-3 * 0.0667
+# ~ 5e-4 * sum(a^2), matching the pre-refactor per-step value.
+REWARD_ENERGY_PENALTY: float = 7.5e-3       # per second per unit sum(a^2)
 REWARD_PAIN_PENALTY: float = 1.0            # subtracted on a pain impact
-REWARD_REACH_PARENT_BONUS: float = 10.0     # terminal bonus for reaching the parent
+REWARD_REACH_PARENT_BONUS: float = 10.0     # terminal payout for reaching the parent (exact, not stacked with milestone bonus)
 
 # Reward shape (rollover task).
 #

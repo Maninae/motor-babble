@@ -6,7 +6,7 @@ import { randomSeedString } from './rng.js';
 import { createSimulation } from './sim.js';
 import { createWiring } from './wiring.js';
 import { createJournal } from './journal.js';
-import { createRenderer } from './render.js';
+import { createRenderer } from './render/index.js';
 import { createHud } from './hud.js';
 import { createEvolution } from './evolution.js';
 
@@ -196,6 +196,7 @@ window.motorBabble = {
   get sim() { return sim; },
   get wiring() { return wiring; },
   get evolution() { return evolution; },
+  get renderer() { return renderer; },
   get heldLetters() { return Array.from(heldLetters); },
   getSnapshot: () => sim.getSnapshot(),
   simulateKeyDown: (k) => onKeyDown({ key: k, target: document.body, repeat: false }),

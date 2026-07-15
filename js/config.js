@@ -91,7 +91,9 @@ export const ROCK = {
 };
 
 // Vision develops from newborn blur (~20/400) toward clear as milestones land.
-export const VISION = { MAX_BLUR_PX: 7 };
+// Kept modest so the scene stays legible even at level 0; the crisp foreground
+// (baby, floor line, parent's face) is what a real newborn sees best.
+export const VISION = { MAX_BLUR_PX: 3.5 };
 
 // Proprioception: seconds of cumulative use before a key's wiring is revealed on the key strip.
 export const REVEAL = { SINGLE_SEC: 2.5, COMBO_SEC: 6 };

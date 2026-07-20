@@ -10,6 +10,10 @@ The game is honest about where the comedy comes from: real newborns actually do 
 
 ## Play
 
+**Live: [maninae.github.io/motor-babble](https://maninae.github.io/motor-babble/)** (needs a physical keyboard)
+
+Or run it locally; there is no build step:
+
 ```bash
 cd motor-babble
 python3 -m http.server 8765
@@ -19,8 +23,9 @@ python3 -m http.server 8765
 Hold letter keys and watch what happens. The journal in the sidebar is the baby's inner monologue, and it is never correct about causality. Cumulative use of a key slowly reveals its wiring on the key strip (that is proprioception). Share a body with a friend via `?seed=`: same seed, same scrambled nervous system.
 
 - **New body** reshuffles the wiring. **Same body** restarts the run you were getting good at.
-- Landing milestones matures you: motor noise anneals, vision sharpens, your neck strengthens.
+- Landing milestones matures you: motor noise anneals, vision sharpens, your neck strengthens, your muscles get real torque. A day-one newborn physically cannot cross the room; you grow into the win.
 - Calm is a resource. The crib bar drains it. A hand discovered near your mouth restores it.
+- Find a rhythm. Held keys make poses; alternating keys make gaits. Kicking legs in antiphase is how babies actually scoot.
 
 ## The RL angle, played from the inside
 

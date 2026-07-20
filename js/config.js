@@ -59,8 +59,8 @@ export const MOTOR = {
 };
 
 // Motor noise: young nervous system = every command comes out smeared. Anneals with milestones.
-// Tuned via the headless gait lab (scratchpad experiment, 2-key square-wave gaits):
-// BASE 0.5 drowned rhythmic input (best human-plausible gait 3.7 mm/s, room
+// Tuned via headless gait experiments (2-key square-wave rhythms, the input a human
+// can actually produce): BASE 0.5 drowned rhythmic input (best gait 3.7 mm/s, room
 // uncrossable); 0.3 keeps newborn comedy while letting rhythm accumulate force.
 export const NOISE = {
   BASE: 0.3,

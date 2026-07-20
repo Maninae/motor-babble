@@ -38,10 +38,10 @@ Two built-in bridges make it explicit:
 
 ```bash
 cd python
-python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
-python train.py --task crawl                 # PPO on a fixed body
-python train.py --task crawl --scrambled     # PPO vs a new wiring every episode
-python watch.py --run <run_name>             # watch your trained baby
+python3.12 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt   # Python 3.12+
+python train.py --task crawl --run-name crawl_baseline    # PPO on a fixed body
+python train.py --task crawl --scrambled --run-name crawl_scrambled   # PPO vs a new wiring every episode
+python watch.py --checkpoint runs/crawl_baseline/final_model.zip      # watch your trained baby
 ```
 
 ## Architecture
